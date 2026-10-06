@@ -49,6 +49,8 @@ public class AudioService extends Service {
     private WifiManager.WifiLock wifiLock;
     private final ArrayBlockingQueue<byte[]> queue = new ArrayBlockingQueue<>(12);
     private int bufferChunks;
+    private int maxQueueChunks;
+    private int profile;
     private long session;
 
     @Override public IBinder onBind(Intent intent) { return null; }
@@ -70,7 +72,9 @@ public class AudioService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-        bufferChunks = intent.getIntExtra("buffer", 0) == 0 ? 2 : 5;
+        profile = Math.max(0, Math.min(2, intent.getIntExtra("buffer", 1)));
+        bufferChunks = new int[]{1, 2, 3}[profile];
+        maxQueueChunks = new int[]{4, 7, 10}[profile];
         running = true;
         session++;
         long activeSession = session;
@@ -96,7 +100,9 @@ public class AudioService extends Service {
         }
 
         String endpoint = PLAY.equals(action) ? "/listen" : "/send";
-        Request request = new Request.Builder().url(pairing.replaceFirst("^http", "ws") + endpoint).build();
+        String profileName = new String[]{"performance", "balanced", "quality"}[profile];
+        Request request = new Request.Builder().url(pairing.replaceFirst("^http", "ws")
+                + endpoint + "?profile=" + profileName).build();
         socket = CLIENT.newWebSocket(request, new WebSocketListener() {
             @Override public void onOpen(WebSocket webSocket, Response response) {
                 if (activeSession != session || !running) return;
@@ -106,7 +112,7 @@ public class AudioService extends Service {
 
             @Override public void onMessage(WebSocket webSocket, ByteString bytes) {
                 if (activeSession != session || !running || !PLAY.equals(action)) return;
-                if (queue.remainingCapacity() == 0 || queue.size() > 8) queue.clear();
+                while (queue.size() >= maxQueueChunks) queue.poll();
                 queue.offer(bytes.toByteArray());
             }
 
@@ -162,8 +168,9 @@ public class AudioService extends Service {
                         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
                 .setAudioFormat(format)
                 .setTransferMode(AudioTrack.MODE_STREAM)
-                .setBufferSizeInBytes(Math.max(min, 16384))
-                .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+                .setBufferSizeInBytes(Math.max(min, new int[]{8192, 16384, 32768}[profile]))
+                .setPerformanceMode(profile == 2 ? AudioTrack.PERFORMANCE_MODE_NONE :
+                        AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                 .build();
         if (track.getState() != AudioTrack.STATE_INITIALIZED) throw new IllegalStateException("AudioTrack");
         track.setVolume(volume);
@@ -174,14 +181,18 @@ public class AudioService extends Service {
     private void startPlaybackWorker() {
         worker = new Thread(() -> {
             try {
+                boolean prebuffering = true;
                 while (running) {
-                    if (queue.size() < bufferChunks) {
+                    if (prebuffering && queue.size() < bufferChunks) {
                         Thread.sleep(5);
                         continue;
                     }
-                    byte[] data = queue.poll(500, TimeUnit.MILLISECONDS);
+                    prebuffering = false;
+                    byte[] data = queue.poll(100, TimeUnit.MILLISECONDS);
                     if (data != null && currentTrack != null) {
                         currentTrack.write(data, 0, data.length, AudioTrack.WRITE_BLOCKING);
+                    } else if (data == null) {
+                        prebuffering = true;
                     }
                 }
             } catch (InterruptedException ignored) {
@@ -223,7 +234,7 @@ public class AudioService extends Service {
 
     private void startCaptureWorker(WebSocket webSocket) {
         worker = new Thread(() -> {
-            byte[] buffer = new byte[4096];
+            byte[] buffer = new byte[new int[]{960, 1920, 3840}[profile]];
             while (running && recorder != null) {
                 int count = recorder.read(buffer, 0, buffer.length, AudioRecord.READ_BLOCKING);
                 if (count <= 0) break;

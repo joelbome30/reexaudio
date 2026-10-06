@@ -119,11 +119,12 @@ class App:
         STATE.mkdir(parents=True, exist_ok=True)
         self.root = tk.Tk()
         self.root.title(f"ReExAudio {VERSION}")
-        self.root.geometry("560x900")
-        self.root.minsize(480, 760)
+        self.root.geometry("560x700")
+        self.root.minsize(480, 500)
         self.root.configure(bg="#17191d")
         self.cfg = read_config()
         self.connection = tk.StringVar(value=self.cfg.get("connection", "direct"))
+        self.profile = tk.StringVar(value=self.cfg.get("profile", "balanced"))
         self.url = ""
         self.build()
         self.update_qr()
@@ -139,14 +140,31 @@ class App:
         style.configure("TCheckbutton", background="#17191d", foreground="#f2f4f5", font=("Sans", 11))
         style.configure("TRadiobutton", background="#17191d", foreground="#f2f4f5", font=("Sans", 11))
 
-        body = ttk.Frame(self.root, padding=24)
-        body.pack(fill="both", expand=True)
+        scroller = ttk.Frame(self.root)
+        scroller.pack(fill="both", expand=True)
+        canvas = tk.Canvas(scroller, background="#17191d", highlightthickness=0)
+        scrollbar = ttk.Scrollbar(scroller, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        body = ttk.Frame(canvas, padding=24)
+        body_window = canvas.create_window((0, 0), window=body, anchor="nw")
+        body.bind("<Configure>", lambda _: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(body_window, width=event.width))
+        canvas.bind("<Button-4>", lambda _: canvas.yview_scroll(-3, "units"))
+        canvas.bind("<Button-5>", lambda _: canvas.yview_scroll(3, "units"))
         ttk.Label(body, text=f"ReExAudio {VERSION}", style="Title.TLabel").pack(anchor="w")
         ttk.Label(body, text="Tipo de conexión").pack(anchor="w", pady=(14, 2))
         ttk.Radiobutton(body, text="P2P: Wi‑Fi Direct, sin router (predeterminado)",
                         variable=self.connection, value="direct", command=self.connection_changed).pack(anchor="w")
         ttk.Radiobutton(body, text="Red local: ambos en la misma Wi‑Fi",
                         variable=self.connection, value="local", command=self.connection_changed).pack(anchor="w")
+        ttk.Label(body, text="Perfil de retardo").pack(anchor="w", pady=(10, 2))
+        for value, label in (("performance", "Rendimiento · menos retardo"),
+                             ("balanced", "Equilibrado"),
+                             ("quality", "Calidad · más estabilidad")):
+            ttk.Radiobutton(body, text=label, variable=self.profile, value=value,
+                            command=self.profile_changed).pack(anchor="w")
         self.network_note = ttk.Label(body, text="", wraplength=500)
         self.network_note.pack(anchor="w", pady=(6, 8))
         ttk.Label(body, text="Escanea este QR desde la app del celular.").pack(anchor="w", pady=(0, 8))
@@ -193,16 +211,22 @@ class App:
 
     def save(self):
         self.cfg.update(reverse_sink=self.reverse_sink.get(), pc_audio=self.pc_audio.get(),
-                        volume=self.volume.get(), connection=self.connection.get())
+                        volume=self.volume.get(), connection=self.connection.get(),
+                        profile=self.profile.get())
         CONFIG.write_text(json.dumps(self.cfg, indent=2))
 
     def connection_changed(self):
         self.save()
         self.update_qr()
 
+    def profile_changed(self):
+        self.save()
+        self.update_qr()
+
     def update_qr(self):
-        self.url = (f"redmiaudio://p2p/{TOKEN}" if self.connection.get() == "direct"
-                    else f"http://{ip_address()}:53317/{TOKEN}")
+        base = (f"redmiaudio://p2p/{TOKEN}" if self.connection.get() == "direct"
+                else f"http://{ip_address()}:53317/{TOKEN}")
+        self.url = f"{base}?profile={self.profile.get()}"
         qr_file = STATE / "pairing.png"
         command("qrencode", "-o", str(qr_file), "-s", "5", "-m", "2", self.url)
         self.qr = tk.PhotoImage(file=qr_file)

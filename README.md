@@ -16,6 +16,14 @@ No se usa ningún servidor externo. El QR contiene un token de emparejamiento al
 3. Elige el tipo de conexión. En Android pulsa **Escanear QR del PC** y toma una foto del código. En P2P, pulsa **Buscar celular** en el PC, selecciona el dispositivo y pulsa **Conectar P2P**. Acepta la conexión Wi‑Fi Direct en Android si aparece la solicitud. En red local, conecta ambos a la misma Wi‑Fi y fotografía el QR.
 4. En Android pulsa **Escuchar el PC**, **Enviar audio del celular al PC** o **Enviar micrófono al PC**.
 
+## Perfiles de retardo
+
+- **Rendimiento:** búfer pequeño para reducir el retardo; necesita una conexión estable.
+- **Equilibrado:** retardo y tolerancia a cortes intermedios; es el perfil inicial.
+- **Calidad:** búfer mayor para evitar cortes cuando la conexión fluctúa. El audio PCM conserva la misma fidelidad en los tres perfiles.
+
+El perfil elegido en el PC viaja en el QR y aparece seleccionado en Android al escanearlo. Puedes cambiarlo en Android antes de iniciar el audio. Para aplicar un cambio mientras escuchas, detén el audio y vuelve a iniciarlo.
+
 La app Android usa un servicio de reproducción en primer plano para seguir sonando cuando la pantalla se apaga. El audio interno solo se puede capturar tras aceptar el permiso de Android y si la app que lo reproduce permite la captura; algunas apps lo bloquean.
 
 ## Instalar la app del PC

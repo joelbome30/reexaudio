@@ -10,6 +10,7 @@ import re
 import socket
 import struct
 import subprocess
+from urllib.parse import parse_qs, urlsplit
 
 
 STATE = Path.home() / ".local/state/redmi-audio"
@@ -21,6 +22,11 @@ APK_VERSION = re.search(r"versionName\s+'([^']+)'", BUILD_FILE.read_text()).grou
 APK_NAME = f"ReExAudio-{APK_VERSION}.apk"
 PORT = 53317
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+PROFILES = {
+    "performance": {"capture_ms": 10, "playback_ms": 15, "chunk": 1920},
+    "balanced": {"capture_ms": 20, "playback_ms": 40, "chunk": 3840},
+    "quality": {"capture_ms": 40, "playback_ms": 80, "chunk": 7680},
+}
 
 
 def reverse_sink():
@@ -28,6 +34,14 @@ def reverse_sink():
         return json.loads(CONFIG.read_text()).get("reverse_sink", "")
     except (OSError, ValueError):
         return ""
+
+
+def default_profile():
+    try:
+        profile = json.loads(CONFIG.read_text()).get("profile", "balanced")
+    except (OSError, ValueError):
+        profile = "balanced"
+    return profile if profile in PROFILES else "balanced"
 
 
 def frame(payload):
@@ -46,7 +60,8 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        path = self.path.split("?", 1)[0]
+        requested = urlsplit(self.path)
+        path = requested.path
         if path == f"/{TOKEN}":
             body = ("<!doctype html><html lang='es'><meta name='viewport' "
                     "content='width=device-width, initial-scale=1'><title>ReExAudio</title>"
@@ -93,17 +108,20 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Sec-WebSocket-Accept", accept)
         self.end_headers()
 
+        selected = parse_qs(requested.query).get("profile", [default_profile()])[0]
+        profile = PROFILES.get(selected, PROFILES["balanced"])
         if path.endswith("/listen"):
-            self.listen_to_pc()
+            self.listen_to_pc(profile)
         else:
-            self.send_to_pc()
+            self.send_to_pc(profile)
 
-    def listen_to_pc(self):
+    def listen_to_pc(self, profile):
         command = ["parec", "--device=redmi_phone.monitor", "--format=s16le",
-                   "--rate=48000", "--channels=2", "--latency-msec=20", "--raw"]
+                   "--rate=48000", "--channels=2",
+                   f"--latency-msec={profile['capture_ms']}", "--raw"]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         try:
-            while chunk := process.stdout.read(8192):
+            while chunk := process.stdout.read(profile["chunk"]):
                 self.connection.sendall(frame(chunk))
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
@@ -133,12 +151,13 @@ class Handler(BaseHTTPRequestHandler):
             payload[index] ^= mask[index & 3]
         return opcode, payload
 
-    def send_to_pc(self):
+    def send_to_pc(self, profile):
         sink = reverse_sink()
         if not sink:
             return
         command = ["pacat", "--playback", "--device=" + sink, "--format=s16le",
-                   "--rate=48000", "--channels=1", "--latency-msec=40", "--raw"]
+                   "--rate=48000", "--channels=1",
+                   f"--latency-msec={profile['playback_ms']}", "--raw"]
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
         try:
             while True:

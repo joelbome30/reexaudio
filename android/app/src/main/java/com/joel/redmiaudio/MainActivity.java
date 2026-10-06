@@ -15,6 +15,8 @@ import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Bundle;
 import android.os.Build;
 import android.provider.MediaStore;
+import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -90,14 +92,21 @@ public class MainActivity extends Activity {
             status.setText("Audio detenido");
         });
 
-        TextView bufferLabel = label("Retardo de reproducción", 16);
+        TextView bufferLabel = label("Perfil de retardo (al iniciar audio)", 16);
         bufferLabel.setPadding(0, dp(20), 0, 0);
         layout.addView(bufferLabel);
         bufferSpinner = new Spinner(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                new String[]{"Bajo", "Estable"});
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
+                android.R.layout.simple_spinner_dropdown_item,
+                new String[]{"Rendimiento · menos retardo", "Equilibrado", "Calidad · más estabilidad"}) {
+            @Override public View getView(int position, View convertView, ViewGroup parent) {
+                View view = super.getView(position, convertView, parent);
+                ((TextView) view).setTextColor(0xfff2f4f5);
+                return view;
+            }
+        };
         bufferSpinner.setAdapter(adapter);
-        bufferSpinner.setSelection(getPreferences(MODE_PRIVATE).getInt("buffer", 0));
+        bufferSpinner.setSelection(getPreferences(MODE_PRIVATE).getInt("buffer", 1));
         layout.addView(bufferSpinner);
 
         TextView volumeLabel = label("Volumen en el celular", 16);
@@ -278,6 +287,10 @@ public class MainActivity extends Activity {
 
     private void processQr(String text) {
         Uri uri = Uri.parse(text);
+        String profile = uri.isHierarchical() ? uri.getQueryParameter("profile") : null;
+        if ("performance".equals(profile)) bufferSpinner.setSelection(0);
+        else if ("balanced".equals(profile)) bufferSpinner.setSelection(1);
+        else if ("quality".equals(profile)) bufferSpinner.setSelection(2);
         if ("redmiaudio".equals(uri.getScheme()) && "p2p".equals(uri.getHost())
                 && uri.getPathSegments().size() == 1) {
             p2pToken = uri.getLastPathSegment();
