@@ -13,7 +13,7 @@ No se usa ningún servidor externo. El QR contiene un token de emparejamiento al
 
 1. Instala el APK en Android.
 2. En el PC abre **ReExAudio** y pulsa **Iniciar**.
-3. Elige el tipo de conexión. En P2P, escanea el QR en la app Android, pulsa **Buscar celular** en el PC, selecciona el dispositivo y pulsa **Conectar P2P**. Acepta la conexión Wi‑Fi Direct en Android si aparece la solicitud. En red local, conecta ambos a la misma Wi‑Fi y escanea el QR.
+3. Elige el tipo de conexión. En Android pulsa **Escanear QR del PC** y toma una foto del código. En P2P, pulsa **Buscar celular** en el PC, selecciona el dispositivo y pulsa **Conectar P2P**. Acepta la conexión Wi‑Fi Direct en Android si aparece la solicitud. En red local, conecta ambos a la misma Wi‑Fi y fotografía el QR.
 4. En Android pulsa **Escuchar el PC**, **Enviar audio del celular al PC** o **Enviar micrófono al PC**.
 
 La app Android usa un servicio de reproducción en primer plano para seguir sonando cuando la pantalla se apaga. El audio interno solo se puede capturar tras aceptar el permiso de Android y si la app que lo reproduce permite la captura; algunas apps lo bloquean.

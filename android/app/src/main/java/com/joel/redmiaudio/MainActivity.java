@@ -2,43 +2,62 @@ package com.joel.redmiaudio;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ClipData;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Bundle;
 import android.os.Build;
-import android.view.View;
+import android.provider.MediaStore;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.ArrayAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
-import com.google.zxing.integration.android.IntentIntegrator;
-import com.google.zxing.integration.android.IntentResult;
+import androidx.core.content.FileProvider;
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.BinaryBitmap;
+import com.google.zxing.DecodeHintType;
+import com.google.zxing.MultiFormatReader;
+import com.google.zxing.RGBLuminanceSource;
+import com.google.zxing.common.HybridBinarizer;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.File;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.Arrays;
+import java.util.EnumMap;
+import java.util.Map;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_RECORD = 100;
     private static final int REQUEST_PROJECTION = 101;
     private static final int REQUEST_P2P = 102;
+    private static final int REQUEST_QR_PHOTO = 103;
     private String pairing;
     private String p2pToken;
     private String pendingAction;
     private TextView status;
     private Spinner bufferSpinner;
     private SeekBar volumeBar;
+    private File qrPhoto;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         pairing = getPreferences(MODE_PRIVATE).getString("pairing", "");
         p2pToken = getPreferences(MODE_PRIVATE).getString("p2pToken", "");
+        if (state != null && state.getString("qrPhoto") != null)
+            qrPhoto = new File(state.getString("qrPhoto"));
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -53,10 +72,8 @@ public class MainActivity extends Activity {
         status.setPadding(0, dp(12), 0, dp(18));
         layout.addView(status);
 
-        addButton(layout, "Escanear QR del PC", () -> new IntentIntegrator(this)
-                .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-                .setPrompt("Escanea el QR de ReExAudio en el PC")
-                .setBeepEnabled(false).initiateScan());
+        addButton(layout, "Escanear QR del PC", this::openQrCamera);
+        addButton(layout, "Pegar enlace o código", this::pastePairing);
         addButton(layout, "Escuchar el PC", () -> begin(AudioService.PLAY));
         addButton(layout, "Enviar audio del celular al PC", () -> begin(AudioService.SEND_INTERNAL));
         addButton(layout, "Enviar micrófono al PC", () -> begin(AudioService.SEND_MIC));
@@ -118,6 +135,89 @@ public class MainActivity extends Activity {
         button.setOnClickListener(v -> action.run());
     }
 
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        if (qrPhoto != null) state.putString("qrPhoto", qrPhoto.getAbsolutePath());
+    }
+
+    private void openQrCamera() {
+        try {
+            qrPhoto = File.createTempFile("reexaudio-qr-", ".jpg", getCacheDir());
+            Uri target = FileProvider.getUriForFile(this, getPackageName() + ".files", qrPhoto);
+            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+            intent.putExtra(MediaStore.EXTRA_OUTPUT, target);
+            intent.setClipData(ClipData.newRawUri("ReExAudio QR", target));
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            startActivityForResult(intent, REQUEST_QR_PHOTO);
+        } catch (Exception error) {
+            Toast.makeText(this, "No se pudo abrir la cámara: " + error.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void pastePairing() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("Enlace o código del QR");
+        new AlertDialog.Builder(this).setTitle("Conectar al PC").setView(input)
+                .setPositiveButton("Conectar", (dialog, which) -> processQr(input.getText().toString().trim()))
+                .setNegativeButton("Cancelar", null).show();
+    }
+
+    private void decodeQrPhoto() {
+        File image = qrPhoto;
+        if (image == null || !image.exists()) {
+            Toast.makeText(this, "No se guardó la foto del QR", Toast.LENGTH_LONG).show();
+            return;
+        }
+        status.setText("Leyendo QR…");
+        new Thread(() -> {
+            String decoded = null;
+            try {
+                BitmapFactory.Options options = new BitmapFactory.Options();
+                options.inJustDecodeBounds = true;
+                BitmapFactory.decodeFile(image.getAbsolutePath(), options);
+                options.inSampleSize = 1;
+                while (Math.max(options.outWidth, options.outHeight) / options.inSampleSize > 1800)
+                    options.inSampleSize *= 2;
+                options.inJustDecodeBounds = false;
+                Bitmap photo = BitmapFactory.decodeFile(image.getAbsolutePath(), options);
+                if (photo == null) throw new IllegalStateException("Foto vacía");
+                for (int degrees = 0; degrees < 360 && decoded == null; degrees += 90) {
+                    Matrix matrix = new Matrix();
+                    matrix.postRotate(degrees);
+                    Bitmap rotated = degrees == 0 ? photo : Bitmap.createBitmap(photo, 0, 0,
+                            photo.getWidth(), photo.getHeight(), matrix, false);
+                    int width = rotated.getWidth(), height = rotated.getHeight();
+                    int[] pixels = new int[width * height];
+                    rotated.getPixels(pixels, 0, width, 0, 0, width, height);
+                    MultiFormatReader reader = new MultiFormatReader();
+                    Map<DecodeHintType, Object> hints = new EnumMap<>(DecodeHintType.class);
+                    hints.put(DecodeHintType.POSSIBLE_FORMATS, Arrays.asList(BarcodeFormat.QR_CODE));
+                    hints.put(DecodeHintType.TRY_HARDER, true);
+                    reader.setHints(hints);
+                    try {
+                        decoded = reader.decodeWithState(new BinaryBitmap(
+                                new HybridBinarizer(new RGBLuminanceSource(width, height, pixels)))).getText();
+                    } catch (Exception ignored) {}
+                    if (rotated != photo) rotated.recycle();
+                }
+                photo.recycle();
+            } catch (Exception error) {
+                android.util.Log.e("ReExAudio", "QR decode failed", error);
+            } finally {
+                image.delete();
+            }
+            String result = decoded;
+            runOnUiThread(() -> {
+                if (result == null) {
+                    status.setText("No encontré un QR. Acerca la cámara y toma otra foto.");
+                } else {
+                    processQr(result);
+                }
+            });
+        }, "ReExAudioQrDecode").start();
+    }
+
     private void updateStatus() {
         status.setText(pairing.isEmpty() ?
                 (p2pToken.isEmpty() ? "Escanea el QR del PC para conectar." :
@@ -160,33 +260,34 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        IntentResult scan = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
-        if (scan != null) {
-            if (scan.getContents() != null) {
-                Uri uri = Uri.parse(scan.getContents());
-                if ("redmiaudio".equals(uri.getScheme()) && "p2p".equals(uri.getHost())
-                        && uri.getPathSegments().size() == 1) {
-                    p2pToken = uri.getLastPathSegment();
-                    pairing = "";
-                    getPreferences(MODE_PRIVATE).edit().putString("p2pToken", p2pToken)
-                            .remove("pairing").apply();
-                    updateStatus();
-                    startP2p();
-                } else if (("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
-                        && uri.getHost() != null && uri.getPathSegments().size() == 1) {
-                    pairing = uri.buildUpon().clearQuery().build().toString();
-                    p2pToken = "";
-                    getPreferences(MODE_PRIVATE).edit().putString("pairing", pairing)
-                            .remove("p2pToken").apply();
-                    updateStatus();
-                } else {
-                    Toast.makeText(this, "Ese QR no es de ReExAudio", Toast.LENGTH_LONG).show();
-                }
-            }
+        if (requestCode == REQUEST_QR_PHOTO) {
+            if (resultCode == RESULT_OK) decodeQrPhoto();
             return;
         }
         if (requestCode == REQUEST_PROJECTION && resultCode == RESULT_OK && data != null) {
             startAudio(AudioService.SEND_INTERNAL, resultCode, data);
+        }
+    }
+
+    private void processQr(String text) {
+        Uri uri = Uri.parse(text);
+        if ("redmiaudio".equals(uri.getScheme()) && "p2p".equals(uri.getHost())
+                && uri.getPathSegments().size() == 1) {
+            p2pToken = uri.getLastPathSegment();
+            pairing = "";
+            getPreferences(MODE_PRIVATE).edit().putString("p2pToken", p2pToken)
+                    .remove("pairing").apply();
+            updateStatus();
+            startP2p();
+        } else if (("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
+                && uri.getHost() != null && uri.getPathSegments().size() == 1) {
+            pairing = uri.buildUpon().clearQuery().build().toString();
+            p2pToken = "";
+            getPreferences(MODE_PRIVATE).edit().putString("pairing", pairing)
+                    .remove("p2pToken").apply();
+            updateStatus();
+        } else {
+            Toast.makeText(this, "Ese QR no es de ReExAudio", Toast.LENGTH_LONG).show();
         }
     }
 
