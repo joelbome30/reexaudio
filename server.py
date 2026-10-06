@@ -6,6 +6,7 @@ from pathlib import Path
 import base64
 import hashlib
 import json
+import re
 import socket
 import struct
 import subprocess
@@ -15,6 +16,9 @@ STATE = Path.home() / ".local/state/redmi-audio"
 TOKEN = (STATE / "token").read_text().strip()
 CONFIG = STATE / "config.json"
 APK = Path(__file__).resolve().parent / "android/app/build/outputs/apk/debug/app-debug.apk"
+BUILD_FILE = Path(__file__).resolve().parent / "android/app/build.gradle"
+APK_VERSION = re.search(r"versionName\s+'([^']+)'", BUILD_FILE.read_text()).group(1)
+APK_NAME = f"ReExAudio-{APK_VERSION}.apk"
 PORT = 53317
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -50,7 +54,7 @@ class Handler(BaseHTTPRequestHandler):
                     "background:#17191d;color:white}a{color:#61d095}</style>"
                     "<h1>ReExAudio</h1><p>Instala la aplicación y escanea el QR que aparece "
                     "en el PC. La aplicación mantiene el sonido al apagar la pantalla.</p>"
-                    + (f"<p><a href='/{TOKEN}/app.apk'>Descargar APK para Android</a></p>" if APK.exists() else "")
+                    + (f"<p><a href='/{TOKEN}/{APK_NAME}'>Descargar {APK_NAME}</a></p>" if APK.exists() else "")
                     + "</html>").encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -60,10 +64,11 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
-        if path == f"/{TOKEN}/app.apk" and APK.exists():
+        if path in (f"/{TOKEN}/app.apk", f"/{TOKEN}/{APK_NAME}") and APK.exists():
             self.send_response(200)
             self.send_header("Content-Type", "application/vnd.android.package-archive")
-            self.send_header("Content-Disposition", "attachment; filename=ReExAudio.apk")
+            self.send_header("Content-Disposition", f"attachment; filename={APK_NAME}")
+            self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(APK.stat().st_size))
             self.end_headers()
             with APK.open("rb") as file:

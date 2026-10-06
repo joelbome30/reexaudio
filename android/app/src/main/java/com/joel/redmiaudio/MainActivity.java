@@ -65,9 +65,16 @@ public class MainActivity extends Activity {
         layout.setBackgroundColor(0xff17191d);
         setContentView(layout);
 
+        String appVersion = "";
+        try {
+            appVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (PackageManager.NameNotFoundException ignored) {}
         TextView title = label("ReExAudio", 28);
         title.setTypeface(null, 1);
         layout.addView(title);
+        TextView version = label("Versión " + appVersion, 12);
+        version.setTextColor(0xffaab1ba);
+        layout.addView(version);
         status = label("", 16);
         status.setPadding(0, dp(12), 0, dp(18));
         layout.addView(status);
@@ -336,13 +343,26 @@ public class MainActivity extends Activity {
             }
         }, "RedmiAudioP2P").start();
 
-        WifiP2pManager manager = getSystemService(WifiP2pManager.class);
-        WifiP2pManager.Channel channel = manager.initialize(this, getMainLooper(), null);
-        manager.createGroup(channel, new WifiP2pManager.ActionListener() {
-            public void onSuccess() { status.setText("P2P listo. Pulsa «Buscar celular» en el PC."); }
-            public void onFailure(int reason) {
-                status.setText("P2P: comprueba que Wi‑Fi Direct esté activado (" + reason + ")");
+        try {
+            WifiP2pManager manager = getSystemService(WifiP2pManager.class);
+            if (manager == null) {
+                status.setText("Este celular no ofrece Wi‑Fi Direct. Usa Red local en el PC.");
+                return;
             }
-        });
+            WifiP2pManager.Channel channel = manager.initialize(this, getMainLooper(), null);
+            if (channel == null) {
+                status.setText("No se pudo iniciar Wi‑Fi Direct. Usa Red local en el PC.");
+                return;
+            }
+            manager.createGroup(channel, new WifiP2pManager.ActionListener() {
+                public void onSuccess() { status.setText("P2P listo. Pulsa «Buscar celular» en el PC."); }
+                public void onFailure(int reason) {
+                    status.setText("P2P: comprueba que Wi‑Fi Direct esté activado (" + reason + ")");
+                }
+            });
+        } catch (RuntimeException error) {
+            android.util.Log.e("ReExAudio", "Wi-Fi Direct failed", error);
+            status.setText("No se pudo iniciar Wi‑Fi Direct: " + error.getMessage());
+        }
     }
 }

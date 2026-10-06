@@ -10,8 +10,8 @@ android {
         applicationId 'com.joel.redmiaudio'
         minSdk 29
         targetSdk 34
-        versionCode 3
-        versionName '0.2.1-beta'
+        versionCode 4
+        versionName '0.2.2-beta'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

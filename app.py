@@ -4,6 +4,7 @@
 from pathlib import Path
 import ipaddress
 import json
+import re
 import socket
 import subprocess
 import threading
@@ -19,6 +20,8 @@ CONFIG = STATE / "config.json"
 TOKEN = (STATE / "token").read_text().strip()
 SERVICE = "redmi-audio.service"
 VIRTUAL = "redmi_phone"
+VERSION = re.search(r"versionName\s+'([^']+)'", (Path(__file__).resolve().parent /
+                    "android/app/build.gradle").read_text()).group(1)
 
 
 def command(*args, check=True):
@@ -115,7 +118,7 @@ class App:
     def __init__(self):
         STATE.mkdir(parents=True, exist_ok=True)
         self.root = tk.Tk()
-        self.root.title("ReExAudio")
+        self.root.title(f"ReExAudio {VERSION}")
         self.root.geometry("560x900")
         self.root.minsize(480, 760)
         self.root.configure(bg="#17191d")
@@ -138,7 +141,7 @@ class App:
 
         body = ttk.Frame(self.root, padding=24)
         body.pack(fill="both", expand=True)
-        ttk.Label(body, text="ReExAudio", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(body, text=f"ReExAudio {VERSION}", style="Title.TLabel").pack(anchor="w")
         ttk.Label(body, text="Tipo de conexión").pack(anchor="w", pady=(14, 2))
         ttk.Radiobutton(body, text="P2P: Wi‑Fi Direct, sin router (predeterminado)",
                         variable=self.connection, value="direct", command=self.connection_changed).pack(anchor="w")
