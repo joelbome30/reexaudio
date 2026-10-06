@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Desktop controls and QR pairing for Redmi Audio."""
+"""Desktop controls and QR pairing for ReExAudio."""
 
 from pathlib import Path
 import ipaddress
@@ -115,7 +115,7 @@ class App:
     def __init__(self):
         STATE.mkdir(parents=True, exist_ok=True)
         self.root = tk.Tk()
-        self.root.title("Redmi Audio")
+        self.root.title("ReExAudio")
         self.root.geometry("560x900")
         self.root.minsize(480, 760)
         self.root.configure(bg="#17191d")
@@ -138,7 +138,7 @@ class App:
 
         body = ttk.Frame(self.root, padding=24)
         body.pack(fill="both", expand=True)
-        ttk.Label(body, text="Redmi Audio", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(body, text="ReExAudio", style="Title.TLabel").pack(anchor="w")
         ttk.Label(body, text="Tipo de conexión").pack(anchor="w", pady=(14, 2))
         ttk.Radiobutton(body, text="P2P: Wi‑Fi Direct, sin router (predeterminado)",
                         variable=self.connection, value="direct", command=self.connection_changed).pack(anchor="w")
@@ -270,7 +270,7 @@ class App:
                 self.start()
             self.refresh()
         except subprocess.CalledProcessError as error:
-            messagebox.showerror("Redmi Audio", error.stderr or str(error))
+            messagebox.showerror("ReExAudio", error.stderr or str(error))
 
     def start(self):
         self.save()

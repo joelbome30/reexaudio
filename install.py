@@ -30,7 +30,7 @@ if not config.exists():
 units = home / ".config/systemd/user"
 units.mkdir(parents=True, exist_ok=True)
 (units / "redmi-audio.service").write_text(f"""[Unit]
-Description=Redmi Audio bridge
+Description=ReExAudio bridge
 After=pipewire-pulse.service
 
 [Service]
@@ -46,10 +46,10 @@ apps = home / ".local/share/applications"
 apps.mkdir(parents=True, exist_ok=True)
 (apps / "redmi-audio.desktop").write_text(f"""[Desktop Entry]
 Type=Application
-Name=Redmi Audio
+Name=ReExAudio
 Comment=Escuchar el PC en Android y enviar audio al PC
 Exec=/usr/bin/python3 {project / 'app.py'}
 Terminal=false
 Categories=AudioVideo;Audio;
 """)
-print("Redmi Audio instalado. Abre 'Redmi Audio' desde el menú de aplicaciones.")
+print("ReExAudio instalado. Abre 'ReExAudio' desde el menú de aplicaciones.")

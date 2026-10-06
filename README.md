@@ -1,4 +1,4 @@
-# Redmi Audio
+# ReExAudio
 
 Reproduce el sonido de un PC Linux en Android, incluso con la pantalla apagada. También puede enviar al PC el micrófono o el audio interno del celular. La conexión usa audio PCM y WebSocket en la red local.
 
@@ -12,7 +12,7 @@ No se usa ningún servidor externo. El QR contiene un token de emparejamiento al
 ## Uso
 
 1. Instala el APK en Android.
-2. En el PC abre **Redmi Audio** y pulsa **Iniciar**.
+2. En el PC abre **ReExAudio** y pulsa **Iniciar**.
 3. Elige el tipo de conexión. En P2P, escanea el QR en la app Android, pulsa **Buscar celular** en el PC, selecciona el dispositivo y pulsa **Conectar P2P**. Acepta la conexión Wi‑Fi Direct en Android si aparece la solicitud. En red local, conecta ambos a la misma Wi‑Fi y escanea el QR.
 4. En Android pulsa **Escuchar el PC**, **Enviar audio del celular al PC** o **Enviar micrófono al PC**.
 
@@ -23,8 +23,8 @@ La app Android usa un servicio de reproducción en primer plano para seguir sona
 Requiere Linux con PipeWire o PulseAudio, `pactl`, `parec`, `pacat`, NetworkManager, `qrencode`, Python 3, Tkinter y PyGObject. Wi‑Fi Direct también requiere `wpa_supplicant` y un adaptador compatible.
 
 ```bash
-git clone https://github.com/joelbome30/redmi-audio.git
-cd redmi-audio
+git clone https://github.com/joelbome30/reexaudio.git
+cd reexaudio
 python3 install.py
 ```
 

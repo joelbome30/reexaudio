@@ -46,7 +46,7 @@ public class MainActivity extends Activity {
         layout.setBackgroundColor(0xff17191d);
         setContentView(layout);
 
-        TextView title = label("Redmi Audio", 28);
+        TextView title = label("ReExAudio", 28);
         title.setTypeface(null, 1);
         layout.addView(title);
         status = label("", 16);
@@ -55,7 +55,7 @@ public class MainActivity extends Activity {
 
         addButton(layout, "Escanear QR del PC", () -> new IntentIntegrator(this)
                 .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-                .setPrompt("Escanea el QR de Redmi Audio en el PC")
+                .setPrompt("Escanea el QR de ReExAudio en el PC")
                 .setBeepEnabled(false).initiateScan());
         addButton(layout, "Escuchar el PC", () -> begin(AudioService.PLAY));
         addButton(layout, "Enviar audio del celular al PC", () -> begin(AudioService.SEND_INTERNAL));
@@ -180,7 +180,7 @@ public class MainActivity extends Activity {
                             .remove("p2pToken").apply();
                     updateStatus();
                 } else {
-                    Toast.makeText(this, "Ese QR no es de Redmi Audio", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Ese QR no es de ReExAudio", Toast.LENGTH_LONG).show();
                 }
             }
             return;

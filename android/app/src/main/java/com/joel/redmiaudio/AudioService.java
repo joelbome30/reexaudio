@@ -126,16 +126,16 @@ public class AudioService extends Service {
 
     private Notification notification(String text) {
         NotificationManager manager = getSystemService(NotificationManager.class);
-        manager.createNotificationChannel(new NotificationChannel("audio", "Redmi Audio",
+        manager.createNotificationChannel(new NotificationChannel("reexaudio", "ReExAudio",
                 NotificationManager.IMPORTANCE_LOW));
         PendingIntent open = PendingIntent.getActivity(this, 1, new Intent(this, MainActivity.class),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         PendingIntent stop = PendingIntent.getService(this, 2,
                 new Intent(this, AudioService.class).setAction(STOP),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this, "audio")
+        return new Notification.Builder(this, "reexaudio")
                 .setSmallIcon(android.R.drawable.ic_media_play)
-                .setContentTitle("Redmi Audio")
+                .setContentTitle("ReExAudio")
                 .setContentText(text)
                 .setContentIntent(open)
                 .setOngoing(true)

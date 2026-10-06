@@ -45,10 +45,10 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path == f"/{TOKEN}":
             body = ("<!doctype html><html lang='es'><meta name='viewport' "
-                    "content='width=device-width, initial-scale=1'><title>Redmi Audio</title>"
+                    "content='width=device-width, initial-scale=1'><title>ReExAudio</title>"
                     "<style>body{font:20px system-ui;max-width:35rem;margin:4rem auto;padding:1rem;"
                     "background:#17191d;color:white}a{color:#61d095}</style>"
-                    "<h1>Redmi Audio</h1><p>Instala la aplicación y escanea el QR que aparece "
+                    "<h1>ReExAudio</h1><p>Instala la aplicación y escanea el QR que aparece "
                     "en el PC. La aplicación mantiene el sonido al apagar la pantalla.</p>"
                     + (f"<p><a href='/{TOKEN}/app.apk'>Descargar APK para Android</a></p>" if APK.exists() else "")
                     + "</html>").encode()
@@ -63,6 +63,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == f"/{TOKEN}/app.apk" and APK.exists():
             self.send_response(200)
             self.send_header("Content-Type", "application/vnd.android.package-archive")
+            self.send_header("Content-Disposition", "attachment; filename=ReExAudio.apk")
             self.send_header("Content-Length", str(APK.stat().st_size))
             self.end_headers()
             with APK.open("rb") as file:
