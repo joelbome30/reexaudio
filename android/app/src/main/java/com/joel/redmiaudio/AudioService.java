@@ -36,9 +36,10 @@ public class AudioService extends Service {
     public static final String SEND_INTERNAL = "com.joel.redmiaudio.SEND_INTERNAL";
     public static final String STOP = "com.joel.redmiaudio.STOP";
     public static volatile String mode = "Detenido";
+    public static volatile String connectionStatus = "Detenido";
 
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
-            .pingInterval(15, TimeUnit.SECONDS).build();
+            .connectTimeout(8, TimeUnit.SECONDS).pingInterval(15, TimeUnit.SECONDS).build();
     private static volatile AudioTrack currentTrack;
     private volatile boolean running;
     private volatile WebSocket socket;
@@ -62,6 +63,7 @@ public class AudioService extends Service {
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null || STOP.equals(intent.getAction())) {
+            connectionStatus = "Detenido";
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -80,6 +82,7 @@ public class AudioService extends Service {
         long activeSession = session;
         mode = PLAY.equals(action) ? "Escuchando el PC" :
                 (SEND_MIC.equals(action) ? "Enviando micrófono" : "Enviando audio del celular");
+        connectionStatus = "Conectando";
         int type = PLAY.equals(action) ? ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK :
                 (SEND_MIC.equals(action) ? ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE :
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
@@ -95,6 +98,7 @@ public class AudioService extends Service {
         } catch (Exception error) {
             Log.e("RedmiAudio", "Unable to start audio", error);
             mode = "Error al iniciar audio: " + error.getMessage();
+            connectionStatus = mode;
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -106,6 +110,7 @@ public class AudioService extends Service {
         socket = CLIENT.newWebSocket(request, new WebSocketListener() {
             @Override public void onOpen(WebSocket webSocket, Response response) {
                 if (activeSession != session || !running) return;
+                connectionStatus = "Conectado";
                 if (PLAY.equals(action)) startPlaybackWorker();
                 else startCaptureWorker(webSocket);
             }
@@ -120,11 +125,15 @@ public class AudioService extends Service {
                 if (activeSession == session && running) {
                     Log.e("RedmiAudio", "Connection failed", error);
                     mode = "No se pudo conectar al PC";
+                    connectionStatus = "No se pudo conectar al PC: " + error.getMessage();
                     stopSelf();
                 }
             }
             @Override public void onClosed(WebSocket webSocket, int code, String reason) {
-                if (activeSession == session && running) stopSelf();
+                if (activeSession == session && running) {
+                    connectionStatus = "El PC cerró la conexión";
+                    stopSelf();
+                }
             }
         });
         return START_NOT_STICKY;
@@ -277,6 +286,8 @@ public class AudioService extends Service {
 
     @Override public void onDestroy() {
         cleanup();
+        if ("Conectado".equals(connectionStatus) || "Conectando".equals(connectionStatus))
+            connectionStatus = "Conexión terminada";
         mode = "Detenido";
         super.onDestroy();
     }

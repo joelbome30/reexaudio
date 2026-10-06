@@ -57,6 +57,21 @@ def p2p_device():
     raise RuntimeError("NetworkManager no detecta Wi‑Fi Direct")
 
 
+def p2p_address():
+    try:
+        details = command("iw", "dev").stdout
+    except FileNotFoundError:
+        details = ""
+    match = re.search(r"\baddr\s+([0-9a-f:]{17})\s+type P2P-device\b", details, re.I)
+    if match:
+        return match.group(1).upper()
+    device = p2p_device().removeprefix("p2p-dev-")
+    address_file = Path("/sys/class/net") / device / "address"
+    if address_file.exists():
+        return address_file.read_text().strip().upper()
+    raise RuntimeError("No pude leer la dirección Wi‑Fi Direct del PC")
+
+
 def dbus_property(bus, path, interface, name):
     result = bus.call_sync("org.freedesktop.NetworkManager", path,
                            "org.freedesktop.DBus.Properties", "Get",
@@ -91,8 +106,14 @@ def connect_p2p(address):
     command("nmcli", "connection", "delete", name, check=False)
     command("nmcli", "connection", "add", "type", "wifi-p2p", "ifname", device,
             "con-name", name, "connection.autoconnect", "no", "wifi-p2p.peer", address,
+            "wifi-p2p.wps-method", "pbc",
             "ipv4.method", "auto", "ipv4.never-default", "yes", "ipv6.method", "disabled")
-    command("nmcli", "--wait", "45", "connection", "up", name, "ifname", device)
+    try:
+        command("nmcli", "--wait", "50", "connection", "up", name, "ifname", device)
+    except subprocess.CalledProcessError as error:
+        command("nmcli", "connection", "delete", name, check=False)
+        raise RuntimeError("Wi‑Fi Direct agotó el tiempo. Abre ReExAudio en el celular, "
+                           "escanea el QR nuevo y acepta la solicitud de conexión.") from error
     gateway = command("nmcli", "-g", "IP4.GATEWAY", "device", "show", device).stdout.strip()
     if not gateway:
         address_text = command("nmcli", "-g", "IP4.ADDRESS", "device", "show", device).stdout.strip()
@@ -125,6 +146,7 @@ class App:
         self.cfg = read_config()
         self.connection = tk.StringVar(value=self.cfg.get("connection", "direct"))
         self.profile = tk.StringVar(value=self.cfg.get("profile", "balanced"))
+        self.connecting = False
         self.url = ""
         self.build()
         self.update_qr()
@@ -178,7 +200,9 @@ class App:
         self.peer_choice = tk.StringVar()
         self.peer_combo = ttk.Combobox(self.p2p_controls, textvariable=self.peer_choice, state="readonly", width=19)
         self.peer_combo.pack(side="left", padx=6)
-        ttk.Button(self.p2p_controls, text="Conectar P2P", command=self.connect_phone).pack(side="left")
+        self.connect_button = ttk.Button(self.p2p_controls, text="Conectar P2P",
+                                         command=self.connect_phone)
+        self.connect_button.pack(side="left")
         self.peer_map = {}
         self.p2p_status = ttk.Label(body, text="")
         self.p2p_status.pack(anchor="center")
@@ -227,6 +251,13 @@ class App:
         base = (f"redmiaudio://p2p/{TOKEN}" if self.connection.get() == "direct"
                 else f"http://{ip_address()}:53317/{TOKEN}")
         self.url = f"{base}?profile={self.profile.get()}"
+        if self.connection.get() == "direct":
+            try:
+                self.url += f"&peer={p2p_address()}"
+            except RuntimeError as error:
+                self.qr_label.configure(image="")
+                self.network_note.configure(text=str(error))
+                return
         qr_file = STATE / "pairing.png"
         command("qrencode", "-o", str(qr_file), "-s", "5", "-m", "2", self.url)
         self.qr = tk.PhotoImage(file=qr_file)
@@ -259,17 +290,33 @@ class App:
         threading.Thread(target=task, daemon=True).start()
 
     def connect_phone(self):
+        if self.connecting:
+            return
         address = self.peer_map.get(self.peer_choice.get())
         if not address:
             self.p2p_status.configure(text="Busca y selecciona el celular primero")
             return
+        self.connecting = True
+        self.connect_button.configure(state="disabled")
         self.p2p_status.configure(text="Conectando por Wi‑Fi Direct…")
+        def finish(message):
+            self.connecting = False
+            self.connect_button.configure(state="normal")
+            self.p2p_status.configure(text=message)
+        def connected():
+            try:
+                self.start()
+                self.refresh()
+                finish("Celular enlazado directamente; audio listo")
+            except subprocess.CalledProcessError as error:
+                finish("Enlace P2P listo, pero falló el audio: " +
+                       (error.stderr or str(error)))
         def task():
             try:
                 connect_p2p(address)
-                self.root.after(0, lambda: self.p2p_status.configure(text="Celular enlazado directamente"))
+                self.root.after(0, connected)
             except Exception as error:
-                self.root.after(0, lambda msg=str(error): self.p2p_status.configure(text=msg))
+                self.root.after(0, lambda msg=str(error): finish(msg))
         threading.Thread(target=task, daemon=True).start()
 
     def copy_link(self):
@@ -328,7 +375,12 @@ class App:
                     command("pactl", "move-sink-input", columns[0], previous, check=False)
 
     def run(self):
+        self.root.after(2000, self.poll_status)
         self.root.mainloop()
+
+    def poll_status(self):
+        self.refresh()
+        self.root.after(2000, self.poll_status)
 
 
 if __name__ == "__main__":

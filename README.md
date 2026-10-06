@@ -12,8 +12,8 @@ No se usa ningún servidor externo. El QR contiene un token de emparejamiento al
 ## Uso
 
 1. Instala el APK en Android.
-2. En el PC abre **ReExAudio** y pulsa **Iniciar**.
-3. Elige el tipo de conexión. En Android pulsa **Escanear QR del PC** y toma una foto del código. En P2P, pulsa **Buscar celular** en el PC, selecciona el dispositivo y pulsa **Conectar P2P**. Acepta la conexión Wi‑Fi Direct en Android si aparece la solicitud. En red local, conecta ambos a la misma Wi‑Fi y fotografía el QR.
+2. En el PC abre **ReExAudio**. En P2P el audio se inicia al enlazar el celular; en red local pulsa **Iniciar**.
+3. Elige el tipo de conexión. En Android pulsa **Escanear QR del PC** y toma una foto del código. En P2P, deja abierta la app del celular, pulsa **Buscar celular** en el PC, selecciona el dispositivo y pulsa **Conectar P2P**. Acepta la conexión Wi‑Fi Direct en Android si aparece la solicitud. Si se agota el tiempo, pulsa **Reintentar conexión P2P** en Android y repite la búsqueda en el PC. En red local, conecta ambos a la misma Wi‑Fi y fotografía el QR.
 4. En Android pulsa **Escuchar el PC**, **Enviar audio del celular al PC** o **Enviar micrófono al PC**.
 
 ## Perfiles de retardo
@@ -28,7 +28,7 @@ La app Android usa un servicio de reproducción en primer plano para seguir sona
 
 ## Instalar la app del PC
 
-Requiere Linux con PipeWire o PulseAudio, `pactl`, `parec`, `pacat`, NetworkManager, `qrencode`, Python 3, Tkinter y PyGObject. Wi‑Fi Direct también requiere `wpa_supplicant` y un adaptador compatible.
+Requiere Linux con PipeWire o PulseAudio, `pactl`, `parec`, `pacat`, NetworkManager, `qrencode`, Python 3, Tkinter y PyGObject. Wi‑Fi Direct también requiere `iw`, `wpa_supplicant` y un adaptador compatible.
 
 ```bash
 git clone https://github.com/joelbome30/reexaudio.git
