@@ -1,0 +1,42 @@
+name: Build Linux releases
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-dev zstd python3-gi network-manager
+      - name: Build Rust
+        run: cargo build --release --locked --bins -j 2
+      - name: Download matching Android APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release-apk
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --pattern 'ReExAudio-*.apk' --dir release-apk && break
+            sleep 15
+          done
+          test -f release-apk/ReExAudio-*.apk
+      - name: Download AppImage tool
+        run: |
+          curl -fL --retry 3 https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -o /tmp/appimagetool.AppImage
+          chmod +x /tmp/appimagetool.AppImage
+      - name: Build Linux installers
+        run: python3 packaging/build.py --apk release-apk/ReExAudio-*.apk --appimagetool /tmp/appimagetool.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: dist/*
+      - name: Publish Linux installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" dist/* --repo "${GITHUB_REPOSITORY}" --clobber

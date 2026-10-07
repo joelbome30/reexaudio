@@ -1,0 +1,227 @@
+import { Palette, AboutSlint } from "std-widgets.slint";
+import { MaterialWindow, MaterialPalette, FilledButton, TextButton,
+    Switch, Slider, DropDownMenu, MenuItem, ScrollView } from "@material";
+export { MaterialPalette, MenuItem }
+
+component Label inherits Text {
+    color: MaterialPalette.on_surface;
+    font-size: 15px;
+    wrap: word-wrap;
+    vertical-alignment: center;
+}
+component Hint inherits Label {
+    color: MaterialPalette.on_surface_variant;
+    font-size: 13px;
+}
+component Card inherits Rectangle {
+    vertical-stretch: 0;
+    background: MaterialPalette.surface_container;
+    border-radius: 24px;
+}
+
+export component AppWindow inherits MaterialWindow {
+    title: "ReExAudio";
+    preferred-width: 920px;
+    preferred-height: 800px;
+    min-width: 500px;
+    min-height: 580px;
+    default-font-family: "Sans";
+    default-font-size: 14px;
+    in-out property <bool> dark: true;
+    in-out property <int> accent;
+    in-out property <bool> direct: true;
+    in-out property <int> profile: 1;
+    in-out property <bool> pc-audio: true;
+    in-out property <float> volume: 100;
+    in-out property <int> output-index: -1;
+    in property <[MenuItem]> outputs;
+    in property <bool> busy: true;
+    in property <bool> active;
+    in property <string> service-status: "Consultando el servicio…";
+    in property <string> feedback: "Preparando ReExAudio…";
+    in property <bool> has-error;
+    in property <string> pairing-note: "Preparando el código…";
+    in property <image> qr;
+    in property <bool> qr-ready;
+    in property <string> pairing-link;
+    in property <string> version;
+    callback settings-changed();
+    callback volume-changed();
+    callback refresh-pairing();
+    callback refresh-devices();
+    callback copy-link();
+    callback toggle();
+    callback appearance-changed();
+    init => { Palette.color-scheme = root.dark ? ColorScheme.dark : ColorScheme.light; }
+    changed dark => { Palette.color-scheme = root.dark ? ColorScheme.dark : ColorScheme.light; }
+
+    about := PopupWindow {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: 380px;
+        height: 240px;
+        Rectangle {
+            background: MaterialPalette.surface_container;
+            border-radius: 24px;
+            VerticalLayout {
+                padding: 24px;
+                spacing: 16px;
+                Label { text: "ReExAudio " + root.version; font-size: 22px; }
+                Hint { text: "Audio entre Linux y Android, en tu red local."; }
+                AboutSlint { }
+                TextButton { text: "Cerrar"; clicked => { about.close(); } }
+            }
+        }
+    }
+    clipboard := TextInput { visible: false; text: root.pairing-link; }
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+        HorizontalLayout {
+            spacing: 12px;
+            VerticalLayout {
+                spacing: 4px;
+                Label { text: "ReExAudio"; font-size: 30px; font-weight: 700; }
+                Hint { text: "Tu audio, de un dispositivo a otro"; }
+            }
+            TextButton { text: "Acerca de"; clicked => { about.show(); } }
+            TextButton {
+                text: root.dark ? "Tema claro" : "Tema oscuro";
+                enabled: !root.busy;
+                clicked => { root.dark = !root.dark; root.appearance-changed(); }
+            }
+        }
+        Rectangle {
+            height: 52px;
+            border-radius: 18px;
+            background: MaterialPalette.secondary_container;
+            HorizontalLayout {
+                padding-left: 18px;
+                padding-right: 18px;
+                spacing: 12px;
+                Label { text: "●"; width: 12px; color: root.active ? MaterialPalette.primary : MaterialPalette.outline; }
+                Label { text: root.service-status; color: MaterialPalette.on_secondary_container; }
+            }
+        }
+        scroll := ScrollView {
+            horizontal-scrollbar-policy: always-off;
+            content-width: self.visible-width;
+            GridLayout {
+                padding: 0px;
+                spacing: 16px;
+                VerticalLayout {
+                    alignment: start;
+                    row: root.width < 800px ? 1 : 0;
+                    col: 0;
+                    spacing: 16px;
+                    horizontal-stretch: 1;
+                    Card {
+                        VerticalLayout {
+                            padding: 22px;
+                            spacing: 16px;
+                            Label { text: "Audio"; font-size: 22px; font-weight: 600; }
+                            HorizontalLayout {
+                                Label { text: "Enviar sonido del PC"; }
+                                Switch {
+                                    width: 52px;
+                                    height: 32px;
+                                    checked <=> root.pc-audio;
+                                    enabled: !root.busy && !root.active;
+                                    accessible-label: "Enviar sonido del PC al celular";
+                                    checked-state-changed(_) => { root.settings-changed(); }
+                                }
+                            }
+                            Hint { text: "Para recibir solo el micrófono o audio del celular, desactiva el envío antes de iniciar."; }
+                            HorizontalLayout {
+                                Label { text: "Volumen enviado"; }
+                                Label { text: round(root.volume) + "%"; horizontal-alignment: right; }
+                            }
+                            Slider {
+                                height: 32px;
+                                enabled: !root.busy;
+                                value <=> root.volume;
+                                minimum: 0;
+                                maximum: 150;
+                                accessible-label: "Volumen enviado al celular";
+                                value-changed(_) => { root.volume-changed(); }
+                            }
+                            DropDownMenu {
+                                label: "Escuchar el celular en";
+                                items: root.outputs;
+                                current-index <=> root.output-index;
+                                enabled: !root.busy;
+                                selected(_) => { root.settings-changed(); }
+                            }
+                            TextButton { text: "Actualizar salidas de audio"; enabled: !root.busy; clicked => { root.refresh-devices(); } }
+                            Hint { text: "Si cambias la salida, vuelve a iniciar el envío desde Android."; }
+                        }
+                    }
+                    Card {
+                        VerticalLayout {
+                            padding: 22px;
+                            spacing: 14px;
+                            Label { text: "Latencia"; font-size: 22px; font-weight: 600; }
+                            DropDownMenu {
+                                label: "Perfil";
+                                enabled: !root.busy;
+                                items: [{ text: "Rendimiento", enabled: true }, { text: "Equilibrado", enabled: true }, { text: "Calidad", enabled: true }];
+                                current-index <=> root.profile;
+                                selected(_) => { root.settings-changed(); }
+                            }
+                            Hint { text: root.profile == 0 ? "Menos retardo. Requiere una conexión estable." : root.profile == 2 ? "Más búfer para tolerar variaciones de la red." : "Equilibrio entre retardo y tolerancia a cortes."; }
+                            Hint { text: "El perfil viaja en el QR. Para aplicarlo, escanea de nuevo y reinicia el audio en Android."; }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Hint { text: "Acento"; }
+                        TextButton { text: "Azul"; enabled: !root.busy; clicked => { root.accent = 0; root.appearance-changed(); } }
+                        TextButton { text: "Verde"; enabled: !root.busy; clicked => { root.accent = 1; root.appearance-changed(); } }
+                        TextButton { text: "Lila"; enabled: !root.busy; clicked => { root.accent = 2; root.appearance-changed(); } }
+                    }
+                }
+                Card {
+                    row: 0;
+                    col: root.width < 800px ? 0 : 1;
+                    preferred-width: root.width < 800px ? 500px : 310px;
+                    horizontal-stretch: 0;
+                    vertical-stretch: 0;
+                    VerticalLayout {
+                        padding: 22px;
+                        spacing: 14px;
+                        Label { text: "Conectar celular"; font-size: 22px; font-weight: 600; }
+                        DropDownMenu {
+                            label: "Conexión";
+                            items: [{ text: "Wi-Fi Direct · P2P", enabled: true }, { text: "Wi-Fi local", enabled: true }];
+                            current-index: root.direct ? 0 : 1;
+                            enabled: !root.busy;
+                            selected(index) => { root.direct = index == 0; root.settings-changed(); }
+                        }
+                        Hint { text: root.direct ? "Sin router. Abre ReExAudio en Android y escanea este QR." : "Conecta ambos a la misma red. Escanea este QR desde ReExAudio en Android."; }
+                        Rectangle {
+                            height: 246px;
+                            background: white;
+                            border-radius: 16px;
+                            Image { x: 10px; y: 10px; width: parent.width - 20px; height: parent.height - 20px; source: root.qr; image-fit: contain; image-rendering: pixelated; visible: root.qr-ready; }
+                            Text { x: 16px; width: parent.width - 32px; height: parent.height; text: "QR no disponible"; color: #4a4a4a; horizontal-alignment: center; vertical-alignment: center; visible: !root.qr-ready; }
+                        }
+                        Hint { text: root.pairing-note; }
+                        HorizontalLayout {
+                            TextButton { text: "Actualizar QR"; enabled: !root.busy; clicked => { root.refresh-pairing(); } }
+                            TextButton { text: "Copiar"; enabled: root.qr-ready; clicked => { clipboard.select-all(); clipboard.copy(); root.copy-link(); } }
+                        }
+                    }
+                }
+            }
+        }
+        Hint { text: root.feedback; color: root.has-error ? MaterialPalette.error : MaterialPalette.on_surface_variant; }
+        HorizontalLayout {
+            spacing: 24px;
+            VerticalLayout {
+                Hint { text: "Puedes cerrar la ventana; el audio seguirá funcionando."; }
+                Hint { text: root.version + " · Hecho con Slint"; }
+            }
+            FilledButton { width: 160px; height: 44px; text: root.busy ? "Espera…" : root.active ? "Detener audio" : "Iniciar audio"; enabled: !root.busy; clicked => { root.toggle(); } }
+        }
+    }
+}

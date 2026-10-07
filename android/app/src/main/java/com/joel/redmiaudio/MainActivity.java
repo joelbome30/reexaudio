@@ -3,12 +3,12 @@ package com.joel.redmiaudio;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.ClipData;
 import android.content.Intent;
+import android.content.res.ColorStateList;
+import android.view.Gravity;
+import android.widget.AdapterView;
+import android.widget.Switch;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Matrix;
 import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.net.wifi.p2p.WifiP2pConfig;
@@ -18,7 +18,6 @@ import android.os.Bundle;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.MediaStore;
 import android.net.wifi.WpsInfo;
 import android.view.View;
 import android.view.ViewGroup;
@@ -31,37 +30,29 @@ import android.widget.Spinner;
 import android.widget.ArrayAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
-import androidx.core.content.FileProvider;
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.BinaryBitmap;
-import com.google.zxing.DecodeHintType;
-import com.google.zxing.MultiFormatReader;
-import com.google.zxing.RGBLuminanceSource;
-import com.google.zxing.common.HybridBinarizer;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.IOException;
-import java.io.File;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Arrays;
-import java.util.EnumMap;
-import java.util.Map;
 
 public class MainActivity extends Activity {
     private static final int REQUEST_RECORD = 100;
     private static final int REQUEST_PROJECTION = 101;
     private static final int REQUEST_P2P = 102;
-    private static final int REQUEST_QR_PHOTO = 103;
+    private static final int REQUEST_QR_SCAN = 103;
     private String pairing;
     private String p2pToken;
     private String p2pPeer;
     private String p2pStatus = "";
     private String pendingAction;
+    private AppStyle style;
+    private ScrollView scroller;
+    private Button retryButton;
+    private TextView connectionLabel;
     private TextView status;
     private Spinner bufferSpinner;
     private SeekBar volumeBar;
-    private File qrPhoto;
     private volatile ServerSocket p2pServer;
     private final Handler p2pHandler = new Handler(Looper.getMainLooper());
     private int p2pGeneration;
@@ -69,82 +60,118 @@ public class MainActivity extends Activity {
     private boolean audioRequested;
 
     @Override public void onCreate(Bundle state) {
+        style = new AppStyle(this);
+        style.apply();
         super.onCreate(state);
         pairing = getPreferences(MODE_PRIVATE).getString("pairing", "");
         p2pToken = getPreferences(MODE_PRIVATE).getString("p2pToken", "");
         p2pPeer = getPreferences(MODE_PRIVATE).getString("p2pPeer", "");
         if (!p2pToken.isEmpty()) pairing = "";
-        if (state != null && state.getString("qrPhoto") != null)
-            qrPhoto = new File(state.getString("qrPhoto"));
 
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(dp(24), dp(32), dp(24), dp(24));
-        layout.setBackgroundColor(0xff17191d);
-        ScrollView scroller = new ScrollView(this);
+        buildInterface();
+    }
+
+    private void buildInterface() {
+        int scrollPosition = scroller == null ? 0 : scroller.getScrollY();
+        style = new AppStyle(this);
+        style.apply();
+        LinearLayout layout = style.column();
+        layout.setPadding(dp(20), dp(24), dp(20), dp(28));
+        layout.setBackgroundColor(style.background);
+        scroller = new ScrollView(this);
         scroller.setFillViewport(true);
+        scroller.setClipToPadding(false);
         scroller.addView(layout);
         setContentView(scroller);
 
-        String appVersion = "";
-        try {
-            appVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-        } catch (PackageManager.NameNotFoundException ignored) {}
-        TextView title = label("ReExAudio", 28);
-        title.setTypeface(null, 1);
-        layout.addView(title);
-        TextView version = label("Versión " + appVersion, 12);
-        version.setTextColor(0xffaab1ba);
-        layout.addView(version);
-        status = label("", 16);
-        status.setPadding(0, dp(12), 0, dp(18));
-        layout.addView(status);
+        layout.addView(style.title("ReExAudio", 32));
+        TextView subtitle = style.label("Tu audio, de un dispositivo a otro", 15, true);
+        subtitle.setPadding(0, dp(4), 0, dp(20));
+        layout.addView(subtitle);
+        status = style.label("", 15, false);
+        status.setTextColor(style.onContainer);
+        status.setPadding(dp(18), dp(16), dp(18), dp(16));
+        status.setBackground(style.shape(style.container, 18));
+        status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        layout.addView(status, new LinearLayout.LayoutParams(-1, -2));
 
-        addButton(layout, "Escanear QR del PC", this::openQrCamera);
-        addButton(layout, "Pegar enlace o código", this::pastePairing);
-        addButton(layout, "Reintentar conexión P2P", () -> {
-            if (p2pToken.isEmpty()) {
-                Toast.makeText(this, "Primero escanea el QR del PC", Toast.LENGTH_LONG).show();
-            } else {
-                startP2p();
-            }
-        });
-        addButton(layout, "Escuchar el PC", () -> begin(AudioService.PLAY));
-        addButton(layout, "Enviar audio del celular al PC", () -> begin(AudioService.SEND_INTERNAL));
-        addButton(layout, "Enviar micrófono al PC", () -> begin(AudioService.SEND_MIC));
-        addButton(layout, "Detener", () -> {
+        LinearLayout connection = style.card(layout, "Conectar al PC",
+                "Escanea el QR de la ventana de ReExAudio para enlazar tus dispositivos.");
+        connectionLabel = style.label("", 13, true);
+        connection.addView(connectionLabel);
+        style.addButton(connection, "Escanear QR del PC", true, this::openQrCamera);
+        style.addButton(connection, "Pegar enlace o código", false, this::pastePairing);
+        retryButton = style.addButton(connection, "Reintentar Wi-Fi Direct", false, this::startP2p);
+
+        LinearLayout audio = style.card(layout, "Audio", "Elige dónde quieres escuchar.");
+        style.addButton(audio, "Escuchar el PC", true, () -> begin(AudioService.PLAY));
+        TextView listeningHint = style.label("Sigue escuchando con la pantalla apagada.", 13, true);
+        listeningHint.setPadding(dp(4), dp(8), dp(4), dp(6));
+        audio.addView(listeningHint);
+        style.addButton(audio, "Enviar audio del celular al PC", false, () -> begin(AudioService.SEND_INTERNAL));
+        style.addButton(audio, "Enviar micrófono al PC", false, () -> begin(AudioService.SEND_MIC));
+        Button stop = style.addButton(audio, "Detener audio", false, () -> {
             audioRequested = false;
-            Intent intent = new Intent(this, AudioService.class).setAction(AudioService.STOP);
-            startService(intent);
-            status.setText("Audio detenido");
+            audioHandler.removeCallbacksAndMessages(null);
+            startService(new Intent(this, AudioService.class).setAction(AudioService.STOP));
+            showStatus("Audio detenido");
         });
+        stop.setTextColor(style.primary);
+        stop.setBackgroundTintList(ColorStateList.valueOf(style.surface));
 
-        TextView bufferLabel = label("Perfil de retardo (al iniciar audio)", 16);
-        bufferLabel.setPadding(0, dp(20), 0, 0);
-        layout.addView(bufferLabel);
+        LinearLayout settings = style.card(layout, "Ajustes de audio", "Ajusta el retardo y el volumen a tu gusto.");
+        settings.addView(style.title("Perfil de latencia", 16));
         bufferSpinner = new Spinner(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
-                android.R.layout.simple_spinner_dropdown_item,
-                new String[]{"Rendimiento · menos retardo", "Equilibrado", "Calidad · más estabilidad"}) {
-            @Override public View getView(int position, View convertView, ViewGroup parent) {
-                View view = super.getView(position, convertView, parent);
-                ((TextView) view).setTextColor(0xfff2f4f5);
-                return view;
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
+                new String[]{"Rendimiento", "Equilibrado", "Calidad"}) {
+            private View color(View view) {
+                TextView label = (TextView)view;
+                label.setTextColor(style.text);
+                label.setBackgroundColor(style.surface);
+                label.setPadding(dp(12), dp(14), dp(12), dp(14));
+                return label;
+            }
+            @Override public View getView(int position, View old, ViewGroup parent) {
+                return color(super.getView(position, old, parent));
+            }
+            @Override public View getDropDownView(int position, View old, ViewGroup parent) {
+                return color(super.getDropDownView(position, old, parent));
             }
         };
         bufferSpinner.setAdapter(adapter);
+        bufferSpinner.setContentDescription("Perfil de latencia");
+        bufferSpinner.setBackgroundTintList(ColorStateList.valueOf(style.primary));
         bufferSpinner.setSelection(getPreferences(MODE_PRIVATE).getInt("buffer", 1));
-        layout.addView(bufferSpinner);
-
-        TextView volumeLabel = label("Volumen en el celular", 16);
-        volumeLabel.setPadding(0, dp(20), 0, 0);
-        layout.addView(volumeLabel);
+        settings.addView(bufferSpinner, new LinearLayout.LayoutParams(-1, -2));
+        TextView profileHint = style.label("", 13, true);
+        settings.addView(profileHint);
+        bufferSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                getPreferences(MODE_PRIVATE).edit().putInt("buffer", position).apply();
+                profileHint.setText(new String[]{"Menos retardo. Requiere una conexión estable.",
+                        "Equilibrio entre retardo y tolerancia a cortes.",
+                        "Más búfer para tolerar variaciones de la red."}[position]
+                        + " Se aplica al iniciar el audio.");
+            }
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+        TextView volumeLabel = style.title("Volumen en el celular", 16);
+        volumeLabel.setPadding(0, dp(22), 0, dp(4));
+        settings.addView(volumeLabel);
+        TextView volumeValue = style.label("", 14, true);
+        settings.addView(volumeValue);
         volumeBar = new SeekBar(this);
         volumeBar.setMax(100);
         volumeBar.setProgress(getPreferences(MODE_PRIVATE).getInt("volume", 100));
-        layout.addView(volumeBar);
+        volumeBar.setContentDescription("Volumen en el celular");
+        volumeBar.setThumbTintList(ColorStateList.valueOf(style.primary));
+        volumeBar.setProgressTintList(ColorStateList.valueOf(style.primary));
+        volumeBar.setProgressBackgroundTintList(ColorStateList.valueOf(style.container));
+        volumeValue.setText(volumeBar.getProgress() + " %");
+        settings.addView(volumeBar, new LinearLayout.LayoutParams(-1, dp(48)));
         volumeBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar bar, int progress, boolean user) {
+                volumeValue.setText(progress + " %");
                 if (user) {
                     getPreferences(MODE_PRIVATE).edit().putInt("volume", progress).apply();
                     AudioService.setVolume(progress / 100f);
@@ -153,120 +180,89 @@ public class MainActivity extends Activity {
             public void onStartTrackingTouch(SeekBar bar) {}
             public void onStopTrackingTouch(SeekBar bar) {}
         });
+
+        LinearLayout appearance = style.card(layout, "Apariencia", "Los mismos acentos que en tu PC.");
+        Switch theme = new Switch(this);
+        theme.setText("Tema oscuro");
+        theme.setTextColor(style.text);
+        theme.setTextSize(16);
+        theme.setMinHeight(dp(48));
+        theme.setChecked(style.dark);
+        theme.setThumbTintList(ColorStateList.valueOf(style.primary));
+        theme.setTrackTintList(ColorStateList.valueOf(style.container));
+        appearance.addView(theme, new LinearLayout.LayoutParams(-1, -2));
+        theme.setOnCheckedChangeListener((button, checked) -> {
+            getSharedPreferences("appearance", MODE_PRIVATE).edit().putBoolean("dark", checked).apply();
+            buildInterface();
+        });
+        LinearLayout accents = new LinearLayout(this);
+        String[] names = {"Azul", "Verde", "Lila"};
+        for (int i = 0; i < names.length; i++) {
+            final int selected = i;
+            boolean active = style.accentIndex == i;
+            Button button = style.button(names[i], active, () -> {
+                getSharedPreferences("appearance", MODE_PRIVATE).edit().putInt("accent", selected).apply();
+                buildInterface();
+            });
+            button.setContentDescription("Acento " + names[i] + (active ? ", seleccionado" : ""));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -2, 1);
+            params.setMarginEnd(dp(i < 2 ? 6 : 0));
+            params.topMargin = dp(12);
+            accents.addView(button, params);
+        }
+        appearance.addView(accents);
+        String version = "";
+        try { version = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
+        catch (PackageManager.NameNotFoundException ignored) {}
+        TextView footer = style.label("ReExAudio " + version + " · Linux + Android", 12, true);
+        footer.setGravity(Gravity.CENTER);
+        footer.setPadding(0, dp(24), 0, 0);
+        layout.addView(footer);
         updateStatus();
+        scroller.post(() -> scroller.scrollTo(0, scrollPosition));
     }
 
-    private int dp(int value) {
-        return (int) (getResources().getDisplayMetrics().density * value + .5f);
-    }
-
-    private TextView label(String text, int size) {
-        TextView view = new TextView(this);
-        view.setText(text);
-        view.setTextSize(size);
-        view.setTextColor(0xfff2f4f5);
-        return view;
-    }
-
-    private void addButton(LinearLayout layout, String text, Runnable action) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setAllCaps(false);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(52));
-        params.bottomMargin = dp(8);
-        layout.addView(button, params);
-        button.setOnClickListener(v -> action.run());
-    }
-
-    @Override protected void onSaveInstanceState(Bundle state) {
-        super.onSaveInstanceState(state);
-        if (qrPhoto != null) state.putString("qrPhoto", qrPhoto.getAbsolutePath());
-    }
+    private int dp(int value) { return style.dp(value); }
 
     private void openQrCamera() {
-        try {
-            qrPhoto = File.createTempFile("reexaudio-qr-", ".jpg", getCacheDir());
-            Uri target = FileProvider.getUriForFile(this, getPackageName() + ".files", qrPhoto);
-            Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-            intent.putExtra(MediaStore.EXTRA_OUTPUT, target);
-            intent.setClipData(ClipData.newRawUri("ReExAudio QR", target));
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-            startActivityForResult(intent, REQUEST_QR_PHOTO);
-        } catch (Exception error) {
-            Toast.makeText(this, "No se pudo abrir la cámara: " + error.getMessage(), Toast.LENGTH_LONG).show();
-        }
+        startActivityForResult(new Intent(this, QrScannerActivity.class), REQUEST_QR_SCAN);
     }
 
     private void pastePairing() {
         EditText input = new EditText(this);
         input.setSingleLine(true);
         input.setHint("Enlace o código del QR");
-        new AlertDialog.Builder(this).setTitle("Conectar al PC").setView(input)
-                .setPositiveButton("Conectar", (dialog, which) -> processQr(input.getText().toString().trim()))
-                .setNegativeButton("Cancelar", null).show();
+        input.setTextColor(style.text);
+        input.setHintTextColor(style.muted);
+        input.setBackgroundTintList(ColorStateList.valueOf(style.primary));
+        LinearLayout dialogContent = style.column();
+        dialogContent.setPadding(dp(24), dp(12), dp(24), dp(12));
+        dialogContent.addView(input);
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Conectar al PC")
+                .setView(dialogContent)
+                .setPositiveButton("Conectar", (window, which) -> processQr(input.getText().toString().trim()))
+                .setNegativeButton("Cancelar", null).create();
+        dialog.setOnShowListener(window -> {
+            dialog.getWindow().setBackgroundDrawable(style.shape(style.surface, 28));
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(style.primary);
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(style.primary);
+        });
+        dialog.show();
     }
 
-    private void decodeQrPhoto() {
-        File image = qrPhoto;
-        if (image == null || !image.exists()) {
-            Toast.makeText(this, "No se guardó la foto del QR", Toast.LENGTH_LONG).show();
-            return;
-        }
-        status.setText("Leyendo QR…");
-        new Thread(() -> {
-            String decoded = null;
-            try {
-                BitmapFactory.Options options = new BitmapFactory.Options();
-                options.inJustDecodeBounds = true;
-                BitmapFactory.decodeFile(image.getAbsolutePath(), options);
-                options.inSampleSize = 1;
-                while (Math.max(options.outWidth, options.outHeight) / options.inSampleSize > 1800)
-                    options.inSampleSize *= 2;
-                options.inJustDecodeBounds = false;
-                Bitmap photo = BitmapFactory.decodeFile(image.getAbsolutePath(), options);
-                if (photo == null) throw new IllegalStateException("Foto vacía");
-                for (int degrees = 0; degrees < 360 && decoded == null; degrees += 90) {
-                    Matrix matrix = new Matrix();
-                    matrix.postRotate(degrees);
-                    Bitmap rotated = degrees == 0 ? photo : Bitmap.createBitmap(photo, 0, 0,
-                            photo.getWidth(), photo.getHeight(), matrix, false);
-                    int width = rotated.getWidth(), height = rotated.getHeight();
-                    int[] pixels = new int[width * height];
-                    rotated.getPixels(pixels, 0, width, 0, 0, width, height);
-                    MultiFormatReader reader = new MultiFormatReader();
-                    Map<DecodeHintType, Object> hints = new EnumMap<>(DecodeHintType.class);
-                    hints.put(DecodeHintType.POSSIBLE_FORMATS, Arrays.asList(BarcodeFormat.QR_CODE));
-                    hints.put(DecodeHintType.TRY_HARDER, true);
-                    reader.setHints(hints);
-                    try {
-                        decoded = reader.decodeWithState(new BinaryBitmap(
-                                new HybridBinarizer(new RGBLuminanceSource(width, height, pixels)))).getText();
-                    } catch (Exception ignored) {}
-                    if (rotated != photo) rotated.recycle();
-                }
-                photo.recycle();
-            } catch (Exception error) {
-                android.util.Log.e("ReExAudio", "QR decode failed", error);
-            } finally {
-                image.delete();
-            }
-            String result = decoded;
-            runOnUiThread(() -> {
-                if (result == null) {
-                    status.setText("No encontré un QR. Acerca la cámara y toma otra foto.");
-                } else {
-                    processQr(result);
-                }
-            });
-        }, "ReExAudioQrDecode").start();
+    private void showStatus(String message) {
+        if (!message.contentEquals(status.getText())) status.setText(message);
     }
 
     private void updateStatus() {
+        retryButton.setVisibility(p2pToken.isEmpty() ? View.GONE : View.VISIBLE);
+        connectionLabel.setText(!p2pToken.isEmpty() ? "Wi-Fi Direct · Sin router"
+                : pairing.isEmpty() ? "Wi-Fi Direct o Wi-Fi local" : "Wi-Fi local · " + Uri.parse(pairing).getHost());
         if (audioRequested) {
-            status.setText(AudioService.connectionStatus);
+            showStatus("Conectado".equals(AudioService.connectionStatus) ? AudioService.mode : AudioService.connectionStatus);
             return;
         }
-        status.setText(pairing.isEmpty() ?
+        showStatus(pairing.isEmpty() ?
                 (p2pToken.isEmpty() ? "Escanea el QR del PC para conectar." :
                         (p2pStatus.isEmpty() ? "P2P: esperando conexión directa del PC…" : p2pStatus)) :
                 "PC enlazado: " + Uri.parse(pairing).getHost() + "\n" + AudioService.mode);
@@ -280,7 +276,7 @@ public class MainActivity extends Activity {
     private void begin(String action) {
         if (pairing.isEmpty()) {
             Toast.makeText(this, p2pToken.isEmpty() ? "Primero escanea el QR del PC" :
-                    "Espera el enlace P2P; pulsa «Buscar celular» en el PC", Toast.LENGTH_LONG).show();
+                    "Espera el enlace Wi-Fi Direct; el PC se conecta automáticamente", Toast.LENGTH_LONG).show();
             return;
         }
         pendingAction = action;
@@ -310,7 +306,7 @@ public class MainActivity extends Activity {
         audioRequested = true;
         AudioService.connectionStatus = "Conectando";
         startForegroundService(intent);
-        status.setText("Conectando con el PC…");
+        showStatus("Conectando con el PC…");
         audioHandler.postDelayed(this::refreshAudioStatus, 700);
     }
 
@@ -318,9 +314,11 @@ public class MainActivity extends Activity {
         if (!audioRequested) return;
         String state = AudioService.connectionStatus;
         if ("Conectado".equals(state)) {
-            status.setText(AudioService.mode);
-        } else if (!"Conectando".equals(state)) {
-            status.setText(state);
+            showStatus(AudioService.mode);
+        } else if ("Conectando".equals(state) || state.startsWith("Reconectando")) {
+            showStatus(state);
+        } else {
+            showStatus(state);
             audioRequested = false;
             return;
         }
@@ -329,8 +327,11 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_QR_PHOTO) {
-            if (resultCode == RESULT_OK) decodeQrPhoto();
+        if (requestCode == REQUEST_QR_SCAN) {
+            if (resultCode == RESULT_OK && data != null) {
+                String text = data.getStringExtra("qr");
+                if (text != null) processQr(text);
+            }
             return;
         }
         if (requestCode == REQUEST_PROJECTION && resultCode == RESULT_OK && data != null) {
@@ -385,7 +386,17 @@ public class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
-        if (status != null) updateStatus();
+        if (status != null) {
+            audioRequested = audioRequested || !"Detenido".equals(AudioService.mode);
+            audioHandler.removeCallbacksAndMessages(null);
+            updateStatus();
+            if (audioRequested) audioHandler.postDelayed(this::refreshAudioStatus, 700);
+        }
+    }
+
+    @Override protected void onPause() {
+        audioHandler.removeCallbacksAndMessages(null);
+        super.onPause();
     }
 
     private void startP2p() {
@@ -486,7 +497,7 @@ public class MainActivity extends Activity {
                             int generation, int attempt) {
         if (generation != p2pGeneration || !pairing.isEmpty()) return;
         if (attempt >= 25) {
-            setP2pStatus("No encontré el PC. Pulsa «Buscar celular» en el PC y reintenta aquí.");
+            setP2pStatus("No encontré el PC. Abre ReExAudio en el PC y reintenta aquí.");
             return;
         }
         manager.requestPeers(channel, peers -> {

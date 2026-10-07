@@ -107,10 +107,23 @@ public class AudioService extends Service {
         String profileName = new String[]{"performance", "balanced", "quality"}[profile];
         Request request = new Request.Builder().url(pairing.replaceFirst("^http", "ws")
                 + endpoint + "?profile=" + profileName).build();
+        int[] reconnectAttempts = {0};
+        Handler reconnectHandler = new Handler(Looper.getMainLooper());
+        connectSocket(request, action, activeSession, reconnectAttempts, reconnectHandler);
+        return START_NOT_STICKY;
+    }
+
+    private void connectSocket(Request request, String action, long activeSession,
+                               int[] reconnectAttempts, Handler reconnectHandler) {
+        boolean[] failed = {false};
         socket = CLIENT.newWebSocket(request, new WebSocketListener() {
             @Override public void onOpen(WebSocket webSocket, Response response) {
                 if (activeSession != session || !running) return;
                 connectionStatus = "Conectado";
+                reconnectHandler.postDelayed(() -> {
+                    if (activeSession == session && socket == webSocket && !failed[0])
+                        reconnectAttempts[0] = 0;
+                }, 30000);
                 if (PLAY.equals(action)) startPlaybackWorker();
                 else startCaptureWorker(webSocket);
             }
@@ -124,6 +137,9 @@ public class AudioService extends Service {
             @Override public void onFailure(WebSocket webSocket, Throwable error, Response response) {
                 if (activeSession == session && running) {
                     Log.e("RedmiAudio", "Connection failed", error);
+                    failed[0] = true;
+                    if (PLAY.equals(action) && schedulePlaybackReconnect(request, action, activeSession,
+                            reconnectAttempts, reconnectHandler)) return;
                     mode = "No se pudo conectar al PC";
                     connectionStatus = "No se pudo conectar al PC: " + error.getMessage();
                     stopSelf();
@@ -131,12 +147,29 @@ public class AudioService extends Service {
             }
             @Override public void onClosed(WebSocket webSocket, int code, String reason) {
                 if (activeSession == session && running) {
+                    failed[0] = true;
+                    if (PLAY.equals(action) && schedulePlaybackReconnect(request, action, activeSession,
+                            reconnectAttempts, reconnectHandler)) return;
                     connectionStatus = "El PC cerró la conexión";
                     stopSelf();
                 }
             }
         });
-        return START_NOT_STICKY;
+    }
+
+    private boolean schedulePlaybackReconnect(Request request, String action, long activeSession,
+                                               int[] attempts, Handler handler) {
+        if (attempts[0] >= 5) return false;
+        int attempt = ++attempts[0];
+        long delay = Math.min(15000L, 1000L << (attempt - 1));
+        connectionStatus = "Reconectando con el PC… (" + attempt + "/5)";
+        queue.clear();
+        handler.postDelayed(() -> {
+            if (activeSession == session && running) {
+                connectSocket(request, action, activeSession, attempts, handler);
+            }
+        }, delay);
+        return true;
     }
 
     private Notification notification(String text) {
@@ -188,6 +221,7 @@ public class AudioService extends Service {
     }
 
     private void startPlaybackWorker() {
+        if (worker != null && worker.isAlive()) return;
         worker = new Thread(() -> {
             try {
                 boolean prebuffering = true;
