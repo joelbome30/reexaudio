@@ -143,7 +143,9 @@ def main():
         root = Path(temp) / 'root'
         stage(root, args.bin_dir, args.apk)
         arch_package(root, args.out / f'ReExAudio-{VERSION}-x86_64.pkg.tar.zst')
-        if deb_package(root, args.out / f'reexaudio_{VERSION.replace("-beta", "~beta")}_amd64.deb'):
+        # GitHub Releases replaces '~' in asset filenames with '.'. Keep the
+        # filename stable there while Debian metadata retains 0.3.3~beta.
+        if deb_package(root, args.out / f'reexaudio_{VERSION.replace("-beta", ".beta")}_amd64.deb'):
             print('Paquete Debian creado')
         # DEBIAN is metadata for dpkg, and must not enter the AppImage.
         shutil.rmtree(root / 'DEBIAN', ignore_errors=True)
