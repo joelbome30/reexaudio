@@ -101,6 +101,41 @@ def connected_p2p():
     return "redmi-audio-p2p" in active.splitlines()
 
 
+def listen_p2p():
+    """Advertise this PC and accept only the phone that targets its QR address."""
+    device = p2p_device()
+    path = command("nmcli", "-g", "GENERAL.DBUS-PATH", "device", "show", device).stdout.strip()
+    bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+    try:
+        bus.call_sync("org.freedesktop.NetworkManager", path,
+                      "org.freedesktop.NetworkManager.Device.WifiP2P", "StartFind",
+                      GLib.Variant("(a{sv})", ({"timeout": GLib.Variant("i", 30)},)),
+                      None, Gio.DBusCallFlags.NONE, 5000, None)
+    except GLib.Error:
+        # NetworkManager can report Busy while the existing discovery is running.
+        pass
+
+    devices = command("nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status").stdout
+    active = [line.split(":", 2)[0] for line in devices.splitlines()
+              if len(line.split(":", 2)) == 3
+              and line.split(":", 2)[1] == "wifi-p2p"
+              and line.split(":", 2)[2].startswith("connected")]
+    for peer_device in active:
+        gateway = command("nmcli", "-g", "IP4.GATEWAY", "device", "show", peer_device).stdout.strip()
+        if not gateway:
+            address_text = command("nmcli", "-g", "IP4.ADDRESS", "device", "show", peer_device).stdout.strip()
+            if address_text:
+                gateway = str(ipaddress.ip_interface(address_text.splitlines()[0]).network.network_address + 1)
+        if not gateway:
+            continue
+        with socket.create_connection((gateway, 53318), timeout=3) as peer:
+            peer.sendall(((STATE / "token").read_text().strip() + "\n").encode())
+            peer.settimeout(3)
+            if peer.makefile("rb").readline(16).strip() == b"OK":
+                return True
+    return False
+
+
 if __name__ == "__main__":
     try:
         action = sys.argv[1]
@@ -110,6 +145,8 @@ if __name__ == "__main__":
             result = discover_p2p()
         elif action == "connected":
             result = connected_p2p()
+        elif action == "listen":
+            result = listen_p2p()
         elif action == "connect" and len(sys.argv) == 3:
             if not re.fullmatch(r"[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5}", sys.argv[2]):
                 raise ValueError("Dirección Wi-Fi Direct inválida")

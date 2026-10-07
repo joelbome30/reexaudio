@@ -294,33 +294,29 @@ async fn worker(state: State, mut receiver: mpsc::Receiver<Action>, ui: slint::W
                     }
                 }
                 Action::AutoConnect => {
-                    if serde_json::from_str::<bool>(&helper(&["connected"]).await?).unwrap_or(false)
-                    {
-                        return_auto_status(
-                            &ui,
-                            "Wi‑Fi Direct conectado · Escanea el QR desde Android",
-                        )
-                        .await?;
+                    let connected = serde_json::from_str::<bool>(&helper(&["connected"]).await?)
+                        .unwrap_or(false);
+                    let paired = if connected {
+                        true
                     } else {
                         ui.upgrade_in_event_loop(|ui| {
-                            ui.set_pairing_note("Esperando a que escanees el QR en Android…".into())
+                            ui.set_pairing_note(
+                                "Esperando la conexión del celular que escaneó el QR…".into(),
+                            )
                         })?;
-                        let peers: Vec<(String, String)> =
-                            serde_json::from_str(&helper(&["discover"]).await?)?;
-                        if let Some((name, address)) = peers.first() {
-                            let label =
-                                format!("Conectando con {name}… acepta la solicitud en Android.");
-                            ui.upgrade_in_event_loop(move |ui| ui.set_pairing_note(label.into()))?;
-                            helper(&["connect", address]).await?;
-                            system::command("systemctl", &["--user", "start", SERVICE]).await?;
-                            refresh(&ui).await?;
-                            ui.upgrade_in_event_loop(|ui| {
-                                ui.set_pairing_note(
-                                    "Celular conectado. Ya puedes iniciar el audio desde Android."
-                                        .into(),
-                                )
-                            })?;
-                        }
+                        serde_json::from_str::<bool>(&helper(&["listen"]).await?).unwrap_or(false)
+                    };
+                    if paired {
+                        return_auto_status(&ui, "Celular conectado · Escanea el QR desde Android")
+                            .await?;
+                        system::command("systemctl", &["--user", "start", SERVICE]).await?;
+                        refresh(&ui).await?;
+                        ui.upgrade_in_event_loop(|ui| {
+                            ui.set_pairing_note(
+                                "Celular conectado. Ya puedes iniciar el audio desde Android."
+                                    .into(),
+                            )
+                        })?;
                     }
                 }
                 Action::Toggle => {
