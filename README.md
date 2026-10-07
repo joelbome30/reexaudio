@@ -8,7 +8,7 @@ El escritorio usa **Rust + Slint y componentes Material 3**, con temas claro/osc
 
 1. Instala el APK en Android y abre **ReExAudio** en el PC.
 2. Elige una conexión:
-   - **Wi-Fi Direct (predeterminado):** abre ReExAudio en Android y escanea el QR del PC. El PC busca y conecta el teléfono automáticamente; acepta la solicitud Wi-Fi Direct en Android. No hace falta router ni zona Wi-Fi.
+   - **Wi-Fi Direct (predeterminado):** abre ReExAudio en Android y escanea el QR del PC. El celular se conecta directamente al PC indicado en el QR; no hace falta router ni zona Wi-Fi.
    - **Wi-Fi local:** conecta ambos a la misma red, elige **Wi-Fi local**, escanea el QR y pulsa **Iniciar audio** en el PC. Si cambias de red, pulsa **Actualizar QR**. En equipos con VPN o varias redes, comprueba que la dirección mostrada sea accesible desde Android.
 3. Desde Android elige **Escuchar el PC**, **Enviar audio del celular al PC** o **Enviar micrófono al PC**.
 
@@ -34,12 +34,12 @@ Android usa un servicio en primer plano para reproducir con la pantalla apagada.
 
 ## Descargar e instalar
 
-Descarga la versión **0.3.3 beta** desde [GitHub Releases](https://github.com/joelbome30/reexaudio/releases/tag/v0.3.3-beta). El [APK de Android](https://github.com/joelbome30/reexaudio/releases/download/v0.3.3-beta/ReExAudio-0.3.3-beta.apk) está allí mismo.
+Descarga la versión **0.3.4 beta** desde [GitHub Releases](https://github.com/joelbome30/reexaudio/releases/tag/v0.3.4-beta). El [APK de Android](https://github.com/joelbome30/reexaudio/releases/download/v0.3.4-beta/ReExAudio-0.3.4-beta.apk) está allí mismo.
 
 En Linux x86-64 hay dos formas de instalar:
 
-- **AppImage:** descarga [ReExAudio-0.3.3-beta-x86_64.AppImage](https://github.com/joelbome30/reexaudio/releases/download/v0.3.3-beta/ReExAudio-0.3.3-beta-x86_64.AppImage), dale permiso de ejecución (`chmod +x ReExAudio-*.AppImage`) y ábrelo. El primer arranque registra el servicio de usuario y deja el motor de audio en `~/.local/lib/reexaudio` para que continúe funcionando al cerrar la ventana.
-- **Gestor de paquetes:** en Debian/Ubuntu descarga el [paquete .deb](https://github.com/joelbome30/reexaudio/releases/download/v0.3.3-beta/reexaudio_0.3.3.beta_amd64.deb) e instala con `sudo apt install ./reexaudio_0.3.3.beta_amd64.deb`; en Arch/CachyOS descarga el [paquete pacman](https://github.com/joelbome30/reexaudio/releases/download/v0.3.3-beta/ReExAudio-0.3.3-beta-x86_64.pkg.tar.zst) e instala con `sudo pacman -U ReExAudio-0.3.3-beta-x86_64.pkg.tar.zst`. Abre ReExAudio desde el menú de aplicaciones.
+- **AppImage:** descarga [ReExAudio-0.3.4-beta-x86_64.AppImage](https://github.com/joelbome30/reexaudio/releases/download/v0.3.4-beta/ReExAudio-0.3.4-beta-x86_64.AppImage), dale permiso de ejecución (`chmod +x ReExAudio-*.AppImage`) y ábrelo. El primer arranque registra el servicio de usuario y deja el motor de audio en `~/.local/lib/reexaudio` para que continúe funcionando al cerrar la ventana.
+- **Gestor de paquetes:** en Debian/Ubuntu descarga el [paquete .deb](https://github.com/joelbome30/reexaudio/releases/download/v0.3.4-beta/reexaudio_0.3.4.beta_amd64.deb) e instala con `sudo apt install ./reexaudio_0.3.4.beta_amd64.deb`; en Arch/CachyOS descarga el [paquete pacman](https://github.com/joelbome30/reexaudio/releases/download/v0.3.4-beta/ReExAudio-0.3.4-beta-x86_64.pkg.tar.zst) e instala con `sudo pacman -U ReExAudio-0.3.4-beta-x86_64.pkg.tar.zst`. Abre ReExAudio desde el menú de aplicaciones.
 
 Para Wi-Fi Direct necesitas NetworkManager, un adaptador compatible y Python con Gio/PyGObject. Ambas distribuciones usan PipeWire/PulseAudio y `pactl`, `parec`, `pacat`. El AppImage usa las bibliotecas gráficas habituales del sistema y requiere una distribución con glibc 2.35 o posterior. Si actualizas desde la instalación manual anterior, detén el audio, elimina `~/.config/systemd/user/redmi-audio.service` y ejecuta `systemctl --user daemon-reload` antes de abrir el paquete del gestor; esa unidad de usuario tiene prioridad sobre la incluida por el paquete.
 
