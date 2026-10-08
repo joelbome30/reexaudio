@@ -4,11 +4,7 @@ use tokio::{process::Command, time::timeout};
 
 pub async fn command(program: &str, args: &[&str]) -> Result<String> {
     let result = timeout(
-        Duration::from_secs(if program == "/usr/bin/python3" {
-            90
-        } else {
-            65
-        }),
+        Duration::from_secs(65),
         Command::new(program)
             .args(args)
             .env("LC_ALL", "C")

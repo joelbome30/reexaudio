@@ -24,7 +24,6 @@ def copy(source, target, executable=False):
 def stage(root, binaries, apk):
     for name in ('reexaudio', 'reexaudio-server'):
         copy(binaries / name, root / 'usr/bin' / name, True)
-    copy(ROOT / 'p2p.py', root / 'usr/lib/reexaudio/p2p.py')
     copy(apk, root / 'usr/lib/reexaudio/app.apk')
     copy(ROOT / 'THIRD_PARTY.md', root / 'usr/share/doc/reexaudio/THIRD_PARTY.md')
     copy(ROOT / 'vendor/Slint-LICENSE.md', root / 'usr/share/doc/reexaudio/Slint-LICENSE.md')
@@ -74,7 +73,7 @@ packager = ReExAudio
 size = {size}
 arch = x86_64
 license = custom:ReExAudio
-'''+''.join(f'depend = {x}\n' for x in ('glibc', 'fontconfig', 'libxkbcommon', 'libpulse', 'python', 'python-gobject', 'networkmanager')))
+'''+''.join(f'depend = {x}\n' for x in ('glibc', 'fontconfig', 'libxkbcommon', 'libpulse', 'networkmanager', 'iw')))
     with tarfile.open(output.with_suffix(''), 'w') as archive:
         for file in sorted(root.rglob('*')):
             archive.add(file, arcname=file.relative_to(root))
@@ -94,7 +93,7 @@ Section: sound
 Priority: optional
 Architecture: amd64
 Maintainer: ReExAudio <noreply@github.com>
-Depends: libc6, libfontconfig1, libxkbcommon0, python3, python3-gi, network-manager, pulseaudio-utils, pipewire-pulse | pulseaudio
+Depends: libc6, libfontconfig1, libxkbcommon0, network-manager, iw, pulseaudio-utils, pipewire-pulse | pulseaudio
 Description: Audio entre Linux y Android
  Envia y reproduce audio local por Wi-Fi Direct o la red local.
 ''')
@@ -116,7 +115,6 @@ exec "$HOME/.local/lib/reexaudio/reexaudio" "$@"
 ''')
     apprun.chmod(0o755)
     copy(ROOT / 'install.py', app / 'usr/lib/reexaudio/install.py')
-    copy(ROOT / 'p2p.py', app / 'usr/lib/reexaudio/p2p.py')
     copy(ROOT / 'THIRD_PARTY.md', app / 'usr/lib/reexaudio/THIRD_PARTY.md')
     copy(ROOT / 'vendor/Slint-LICENSE.md', app / 'usr/lib/reexaudio/vendor/Slint-LICENSE.md')
     copy(ROOT / 'vendor/material-1.1.0/LICENSE.md', app / 'usr/lib/reexaudio/vendor/material-1.1.0/LICENSE.md')

@@ -65,7 +65,7 @@ StartupWMClass=reexaudio
     apk_unchanged = same(apk, destination / "app.apk") if apk else not (destination / "app.apk").exists()
     if (all(same(source, target) for source, target in zip(binaries, targets))
             and unit_file.is_file() and unit_file.read_text() == unit
-            and same(project / "p2p.py", destination / "p2p.py") and apk_unchanged):
+            and not (destination / "p2p.py").exists() and apk_unchanged):
         return
     if subprocess.run(["systemctl", "--user", "is-active", "--quiet", "redmi-audio.service"]).returncode == 0:
         parser.error("Detén el audio desde ReExAudio antes de actualizar el servicio.")
@@ -77,7 +77,7 @@ StartupWMClass=reexaudio
         shutil.copy2(source, staging)
         staging.chmod(0o755)
         staging.replace(target)
-    shutil.copy2(project / "p2p.py", destination / "p2p.py")
+    (destination / "p2p.py").unlink(missing_ok=True)
     shutil.copy2(project / "THIRD_PARTY.md", destination / "THIRD_PARTY.md")
     shutil.copy2(project / "vendor/material-1.1.0/LICENSE.md", destination / "Material-LICENSE.md")
     shutil.copy2(project / "vendor/Slint-LICENSE.md", destination / "Slint-LICENSE.md")

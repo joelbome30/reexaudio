@@ -8,7 +8,7 @@ El escritorio usa **Rust + Slint y componentes Material 3**, con temas claro/osc
 
 1. Instala el APK en Android y abre **ReExAudio** en el PC.
 2. Elige una conexión:
-   - **Wi-Fi Direct (predeterminado):** abre ReExAudio en Android y escanea el QR del PC. Cuando Android indique que Wi-Fi Direct está listo, pulsa **Buscar celular** en el PC, elige tu teléfono y pulsa **Conectar P2P**. No hace falta router ni zona Wi-Fi.
+   - **Wi-Fi Direct (predeterminado):** abre ReExAudio en Android y escanea el QR del PC. Mientras Android busca el PC del QR, pulsa **Buscar celular** en el PC, elige tu teléfono y pulsa **Conectar P2P**. No hace falta router ni zona Wi-Fi.
    - **Wi-Fi local:** conecta ambos a la misma red, elige **Wi-Fi local**, escanea el QR y pulsa **Iniciar audio** en el PC. Si cambias de red, pulsa **Actualizar QR**. En equipos con VPN o varias redes, comprueba que la dirección mostrada sea accesible desde Android.
 3. Desde Android elige **Escuchar el PC**, **Enviar audio del celular al PC** o **Enviar micrófono al PC**.
 
@@ -34,7 +34,7 @@ Android usa un servicio en primer plano para reproducir con la pantalla apagada.
 
 ## Descargar e instalar
 
-Descarga el **[APK de Android 0.3.5 beta](https://github.com/joelbome30/reexaudio/releases/download/v0.3.5-beta/ReExAudio-0.3.5-beta.apk)** desde [GitHub Releases](https://github.com/joelbome30/reexaudio/releases/tag/v0.3.5-beta).
+Descarga el **[APK de Android 0.3.6 beta](https://github.com/joelbome30/reexaudio/releases/download/v0.3.6-beta/ReExAudio-0.3.6-beta.apk)** desde [GitHub Releases](https://github.com/joelbome30/reexaudio/releases/tag/v0.3.6-beta).
 
 Esta versión corrige el flujo P2P y requiere actualizar también el escritorio desde este código, siguiendo las instrucciones de abajo. Los paquetes Linux de la release 0.3.4 usan el flujo anterior.
 
@@ -42,7 +42,7 @@ Esta versión corrige el flujo P2P y requiere actualizar también el escritorio 
 
 Para compilar: **Rust/Cargo 1.92 o posterior**, compilador/enlazador C, `pkg-config` y los archivos de desarrollo de Fontconfig y las bibliotecas de escritorio que requiera Winit (X11/Wayland y xkbcommon). La primera compilación descarga los paquetes fijados en `Cargo.lock` y puede tardar varios minutos. El instalador no descarga ni instala dependencias del sistema.
 
-Para ejecutar: PipeWire con `pipewire-pulse` o PulseAudio, `pactl`, `parec`, `pacat`, systemd de usuario y las bibliotecas gráficas X11/Wayland y Fontconfig. Para P2P: NetworkManager, `nmcli`, `iw`, `wpa_supplicant`, Python 3 con PyGObject/Gio y un adaptador compatible. Python se usa únicamente en el instalador, los lanzadores de compatibilidad y el pequeño puente de NetworkManager; la interfaz y el servidor son Rust. Ya no se necesitan Tkinter ni `qrencode`.
+Para ejecutar: PipeWire con `pipewire-pulse` o PulseAudio, `pactl`, `parec`, `pacat`, systemd de usuario y las bibliotecas gráficas X11/Wayland y Fontconfig. Para P2P: NetworkManager, `nmcli`, `iw`, `wpa_supplicant` y un adaptador compatible. Python se usa únicamente en el instalador, el empaquetado y los lanzadores de compatibilidad; la interfaz y el servidor son Rust. Ya no se necesitan Tkinter ni `qrencode`.
 
 ```bash
 git clone https://github.com/joelbome30/reexaudio.git
@@ -51,7 +51,7 @@ cargo build --release --locked -j 2
 python3 install.py
 ```
 
-El instalador copia los binarios y el puente P2P a `~/.local/lib/reexaudio`, crea el acceso del menú y actualiza `redmi-audio.service`. No inicia el audio automáticamente. Si estás actualizando, **detén primero el audio desde la ventana anterior** y cierra esa ventana. El token y los ajustes existentes en `~/.local/state/redmi-audio` se conservan; no hace falta volver a emparejar por cambiar el servidor.
+El instalador copia los binarios a `~/.local/lib/reexaudio`, crea el acceso del menú y actualiza `redmi-audio.service`. No inicia el audio automáticamente. Si estás actualizando, **detén primero el audio desde la ventana anterior** y cierra esa ventana. El token y los ajustes existentes en `~/.local/state/redmi-audio` se conservan; no hace falta volver a emparejar por cambiar el servidor.
 
 Para una compilación de desarrollo, usa `cargo build --locked -j 2` y `python3 install.py --bin-dir target/debug`. Puedes previsualizar la configuración sin instalar con `python3 install.py --dry-run`. Los lanzadores `python3 app.py` y `python3 server.py` ejecutan los nuevos binarios.
 
@@ -73,12 +73,12 @@ El APK queda en `android/app/build/outputs/apk/debug/app-debug.apk`. Si existe a
 - `src/server.rs`: HTTP y WebSocket con Tokio/Axum (que utiliza tokio-tungstenite), límites de sesiones/mensajes, latido de conexión y cierre de los procesos de audio.
 - `src/audio.rs`: creación del dispositivo virtual, redirección y recuperación de la salida del PC.
 - `src/config.rs`: ajustes y escritura atómica, token y compatibilidad con el estado anterior.
-- `p2p.py`: puente acotado con NetworkManager/Gio; conserva el flujo Wi-Fi Direct.
+- `src/p2p.rs`: descubrimiento Wi-Fi Direct por D-Bus con zbus, conexión con NetworkManager y confirmación del token; integrado en el escritorio Rust.
 - `android/`: reproducción y captura nativas en segundo plano.
 
 La interfaz se dibuja con Slint/Winit y el renderizador por software, sin navegador ni Qt. El servidor se puede compilar sin Slint con `cargo build --release --locked --no-default-features --bin reexaudio-server`.
 
-Se conservan el puerto **53317**, las rutas `/{token}/listen` y `/{token}/send`, el QR `redmiaudio://p2p/…`, la confirmación P2P en el puerto **53318**, y los tres perfiles. Para P2P debes actualizar tanto la aplicación del PC como el APK de Android: el PC ahora inicia la conexión al grupo que crea Android. El audio es PCM s16le a 48 kHz, estéreo del PC a Android y mono de Android al PC. `parec` y `pacat` siguen hablando con el servidor de audio del sistema. Una biblioteca implementa WebSocket completo, incluyendo ping/pong, fragmentación y cierre.
+Se conservan el puerto **53317**, las rutas `/{token}/listen` y `/{token}/send`, el QR `redmiaudio://p2p/…`, la confirmación P2P en el puerto **53318**, y los tres perfiles. Para P2P debes actualizar tanto la aplicación del PC como el APK de Android: ambos equipos negocian el grupo y Android solicita ser su dueño; el QR identifica la dirección Wi-Fi Direct del PC. Después de actualizar, vuelve a escanear el QR. El audio es PCM s16le a 48 kHz, estéreo del PC a Android y mono de Android al PC. `parec` y `pacat` siguen hablando con el servidor de audio del sistema. Una biblioteca implementa WebSocket completo, incluyendo ping/pong, fragmentación y cierre.
 
 El token protege el emparejamiento; el transporte local HTTP/WebSocket no está cifrado. El servidor admite hasta ocho sesiones de audio simultáneas y corta conexiones que dejan de responder o de consumir audio, para evitar acumular audio atrasado indefinidamente. En “Escuchar el PC”, Android recupera cortes breves con hasta cinco reintentos; otros modos deben iniciarse otra vez si se interrumpe la conexión.
 
@@ -94,11 +94,13 @@ Se planean versiones nativas para **Windows** y **macOS**, conservando el enfoqu
 cargo fmt --all -- --check
 cargo test --locked --no-default-features -j 2
 cargo check --locked --bin reexaudio -j 2
-python3 -m py_compile app.py server.py p2p.py install.py
+python3 -m py_compile app.py server.py install.py packaging/build.py
 journalctl --user -u redmi-audio.service -n 60
 ```
 
 Las pruebas del servidor utilizan procesos de audio simulados y puertos efímeros: cubren HTTP, autenticación, APK, PCM, perfiles, ping/pong, cierre y recuperación tras fallos sin redirigir el audio real. La compilación no sustituye la prueba de escucha bidireccional y emparejamiento con un teléfono.
+
+`tests/p2p.rs` comprueba el token con conexiones TCP locales, rechaza confirmaciones inválidas y verifica la limpieza de conexiones fallidas con un NetworkManager simulado. Para comprobar el descubrimiento D-Bus con un adaptador real, ejecuta `cargo test --locked --no-default-features --test p2p discovers_peers_on_local_adapter -- --ignored --nocapture`.
 
 `cargo run --locked --example preview -- /tmp/reexaudio-preview` genera cuatro capturas PPM (oscuro, claro, ventana pequeña y desplazamiento) con datos ficticios, sin abrir ventanas, iniciar el servicio ni acceder al audio.
 

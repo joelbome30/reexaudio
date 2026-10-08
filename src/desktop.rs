@@ -1,7 +1,8 @@
 //! All I/O runs on one worker. Only event-loop callbacks touch Slint models.
 use crate::{
     SERVICE, VERSION, VIRTUAL, audio,
-    config::{Config, Profile, State, asset},
+    config::{Config, Profile, State},
+    p2p::WifiDirect,
     system,
 };
 use anyhow::{Context, Result};
@@ -243,6 +244,7 @@ async fn worker(state: State, mut receiver: mpsc::Receiver<Action>, ui: slint::W
             break;
         }
         let polling = matches!(action, Action::Refresh);
+        let connecting = matches!(action, Action::ConnectP2p(_));
         if !polling {
             let _ = ui.upgrade_in_event_loop(|ui| ui.set_busy(true));
         }
@@ -287,7 +289,7 @@ async fn worker(state: State, mut receiver: mpsc::Receiver<Action>, ui: slint::W
                     }
                 }
                 Action::SearchP2p => {
-                    p2p_peers = serde_json::from_str(&helper(&["discover"]).await?)?;
+                    p2p_peers = WifiDirect::default().discover().await?;
                     let labels = p2p_peers
                         .iter()
                         .map(|(name, address)| format!("{name} · {address}"))
@@ -313,7 +315,7 @@ async fn worker(state: State, mut receiver: mpsc::Receiver<Action>, ui: slint::W
                     let name = name.clone();
                     let address = address.clone();
                     return_auto_status(&ui, &format!("Conectando con {name}…")).await?;
-                    helper(&["connect", &address]).await?;
+                    WifiDirect::default().connect(&address, &state.token).await?;
                     system::command("systemctl", &["--user", "start", SERVICE]).await?;
                     refresh(&ui).await?;
                     return_auto_status(
@@ -346,6 +348,9 @@ async fn worker(state: State, mut receiver: mpsc::Receiver<Action>, ui: slint::W
                 ui.set_has_error(error.is_some());
                 if let Some(error) = error {
                     ui.set_feedback(error.into());
+                    if connecting {
+                        ui.set_pairing_note("No se completó la conexión P2P. Reintenta desde Android y vuelve a buscar.".into());
+                    }
                 } else if !polling {
                     ui.set_feedback("Listo. Elige escuchar o enviar audio desde Android.".into());
                 }
@@ -357,12 +362,6 @@ async fn return_auto_status(ui: &slint::Weak<AppWindow>, message: &str) -> Resul
     let message = message.to_string();
     ui.upgrade_in_event_loop(move |ui| ui.set_pairing_note(message.into()))?;
     Ok(())
-}
-async fn helper(args: &[&str]) -> Result<String> {
-    let path = asset("p2p.py");
-    let mut command = vec![path.to_str().context("Ruta P2P inválida")?];
-    command.extend_from_slice(args);
-    system::command("/usr/bin/python3", &command).await
 }
 async fn refresh(ui: &slint::Weak<AppWindow>) -> Result<()> {
     let state = system::service_state().await?;
@@ -389,10 +388,10 @@ async fn pairing(state: &State, ui: &slint::Weak<AppWindow>) -> Result<()> {
     let result = async {
         let cfg = state.config()?;
         let (base, note) = if cfg.connection == "direct" {
-            helper(&["device"]).await?;
+            let peer = WifiDirect::default().address().await?;
             (
                 format!(
-                    "redmiaudio://p2p/{}?profile={}",
+                    "redmiaudio://p2p/{}?profile={}&peer={peer}",
                     state.token,
                     cfg.profile.name()
                 ),

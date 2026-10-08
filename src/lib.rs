@@ -2,6 +2,7 @@ pub mod audio;
 pub mod config;
 #[cfg(feature = "desktop")]
 pub mod desktop;
+pub mod p2p;
 pub mod server;
 pub mod system;
 pub const VERSION: &str = env!("REEXAUDIO_VERSION");
