@@ -8,13 +8,13 @@ El escritorio usa **Rust + Slint y componentes Material 3**, con temas claro/osc
 
 1. Instala el APK en Android y abre **ReExAudio** en el PC.
 2. Elige una conexión:
-   - **Wi-Fi Direct (predeterminado):** abre ReExAudio en Android y escanea el QR del PC. El celular se conecta directamente al PC indicado en el QR; no hace falta router ni zona Wi-Fi.
+   - **Wi-Fi Direct (predeterminado):** abre ReExAudio en Android y escanea el QR del PC. Cuando Android indique que Wi-Fi Direct está listo, pulsa **Buscar celular** en el PC, elige tu teléfono y pulsa **Conectar P2P**. No hace falta router ni zona Wi-Fi.
    - **Wi-Fi local:** conecta ambos a la misma red, elige **Wi-Fi local**, escanea el QR y pulsa **Iniciar audio** en el PC. Si cambias de red, pulsa **Actualizar QR**. En equipos con VPN o varias redes, comprueba que la dirección mostrada sea accesible desde Android.
 3. Desde Android elige **Escuchar el PC**, **Enviar audio del celular al PC** o **Enviar micrófono al PC**.
 
 **Escanear QR del PC** abre un escáner en vivo dentro de Android: concede el permiso de cámara y apunta al código. Se reconoce automáticamente, sin tomar ni guardar fotos. También puedes pegar el enlace de emparejamiento.
 
-Si P2P agota el tiempo, pulsa **Reintentar conexión P2P** en Android. Wi-Fi Direct depende del teléfono, el controlador y el adaptador; necesita una prueba real con cada combinación.
+Si P2P agota el tiempo, pulsa **Reintentar Wi-Fi Direct** en Android y repite **Buscar celular** en el PC. La lista puede incluir televisores u otros equipos cercanos: elige tu teléfono. Wi-Fi Direct depende del teléfono, el controlador y el adaptador; necesita una prueba real con cada combinación.
 
 **Enviar sonido del PC** permite redirigir las aplicaciones del PC al celular. Desactívalo antes de iniciar si solo quieres recibir audio del teléfono. Puedes elegir la salida física donde escucharlo y ajustar el volumen enviado entre 0 y 150 %. **Actualizar salidas de audio** detecta nuevos dispositivos; al cambiar de salida, reinicia el envío desde Android.
 
@@ -34,14 +34,9 @@ Android usa un servicio en primer plano para reproducir con la pantalla apagada.
 
 ## Descargar e instalar
 
-Descarga la versión **0.3.4 beta** desde [GitHub Releases](https://github.com/joelbome30/reexaudio/releases/tag/v0.3.4-beta). El [APK de Android](https://github.com/joelbome30/reexaudio/releases/download/v0.3.4-beta/ReExAudio-0.3.4-beta.apk) está allí mismo.
+Descarga el **[APK de Android 0.3.5 beta](https://github.com/joelbome30/reexaudio/releases/download/v0.3.5-beta/ReExAudio-0.3.5-beta.apk)** desde [GitHub Releases](https://github.com/joelbome30/reexaudio/releases/tag/v0.3.5-beta).
 
-En Linux x86-64 hay dos formas de instalar:
-
-- **AppImage:** descarga [ReExAudio-0.3.4-beta-x86_64.AppImage](https://github.com/joelbome30/reexaudio/releases/download/v0.3.4-beta/ReExAudio-0.3.4-beta-x86_64.AppImage), dale permiso de ejecución (`chmod +x ReExAudio-*.AppImage`) y ábrelo. El primer arranque registra el servicio de usuario y deja el motor de audio en `~/.local/lib/reexaudio` para que continúe funcionando al cerrar la ventana.
-- **Gestor de paquetes:** en Debian/Ubuntu descarga el [paquete .deb](https://github.com/joelbome30/reexaudio/releases/download/v0.3.4-beta/reexaudio_0.3.4.beta_amd64.deb) e instala con `sudo apt install ./reexaudio_0.3.4.beta_amd64.deb`; en Arch/CachyOS descarga el [paquete pacman](https://github.com/joelbome30/reexaudio/releases/download/v0.3.4-beta/ReExAudio-0.3.4-beta-x86_64.pkg.tar.zst) e instala con `sudo pacman -U ReExAudio-0.3.4-beta-x86_64.pkg.tar.zst`. Abre ReExAudio desde el menú de aplicaciones.
-
-Para Wi-Fi Direct necesitas NetworkManager, un adaptador compatible y Python con Gio/PyGObject. Ambas distribuciones usan PipeWire/PulseAudio y `pactl`, `parec`, `pacat`. El AppImage usa las bibliotecas gráficas habituales del sistema y requiere una distribución con glibc 2.35 o posterior. Si actualizas desde la instalación manual anterior, detén el audio, elimina `~/.config/systemd/user/redmi-audio.service` y ejecuta `systemctl --user daemon-reload` antes de abrir el paquete del gestor; esa unidad de usuario tiene prioridad sobre la incluida por el paquete.
+Esta versión corrige el flujo P2P y requiere actualizar también el escritorio desde este código, siguiendo las instrucciones de abajo. Los paquetes Linux de la release 0.3.4 usan el flujo anterior.
 
 ## Compilar e instalar en Linux desde el código
 
@@ -83,7 +78,7 @@ El APK queda en `android/app/build/outputs/apk/debug/app-debug.apk`. Si existe a
 
 La interfaz se dibuja con Slint/Winit y el renderizador por software, sin navegador ni Qt. El servidor se puede compilar sin Slint con `cargo build --release --locked --no-default-features --bin reexaudio-server`.
 
-Se conservan el puerto **53317**, las rutas `/{token}/listen` y `/{token}/send`, el QR `redmiaudio://p2p/…`, la confirmación P2P en el puerto **53318**, y los tres perfiles. El audio es PCM s16le a 48 kHz, estéreo del PC a Android y mono de Android al PC. `parec` y `pacat` siguen hablando con el servidor de audio del sistema. Una biblioteca implementa WebSocket completo, incluyendo ping/pong, fragmentación y cierre.
+Se conservan el puerto **53317**, las rutas `/{token}/listen` y `/{token}/send`, el QR `redmiaudio://p2p/…`, la confirmación P2P en el puerto **53318**, y los tres perfiles. Para P2P debes actualizar tanto la aplicación del PC como el APK de Android: el PC ahora inicia la conexión al grupo que crea Android. El audio es PCM s16le a 48 kHz, estéreo del PC a Android y mono de Android al PC. `parec` y `pacat` siguen hablando con el servidor de audio del sistema. Una biblioteca implementa WebSocket completo, incluyendo ping/pong, fragmentación y cierre.
 
 El token protege el emparejamiento; el transporte local HTTP/WebSocket no está cifrado. El servidor admite hasta ocho sesiones de audio simultáneas y corta conexiones que dejan de responder o de consumir audio, para evitar acumular audio atrasado indefinidamente. En “Escuchar el PC”, Android recupera cortes breves con hasta cinco reintentos; otros modos deben iniciarse otra vez si se interrumpe la conexión.
 

@@ -44,10 +44,14 @@ export component AppWindow inherits MaterialWindow {
     in property <image> qr;
     in property <bool> qr-ready;
     in property <string> pairing-link;
+    in property <[MenuItem]> p2p-peers: [];
+    in-out property <int> p2p-peer-index: 0;
     in property <string> version;
     callback settings-changed();
     callback volume-changed();
     callback refresh-pairing();
+    callback search-p2p();
+    callback connect-p2p();
     callback refresh-devices();
     callback copy-link();
     callback toggle();
@@ -197,7 +201,7 @@ export component AppWindow inherits MaterialWindow {
                             enabled: !root.busy;
                             selected(index) => { root.direct = index == 0; root.settings-changed(); }
                         }
-                        Hint { text: root.direct ? "Sin router. Abre ReExAudio en Android y escanea este QR." : "Conecta ambos a la misma red. Escanea este QR desde ReExAudio en Android."; }
+                        Hint { text: root.direct ? "Sin router. Escanea el QR en Android; después busca y elige el celular aquí." : "Conecta ambos a la misma red. Escanea este QR desde ReExAudio en Android."; }
                         Rectangle {
                             height: 246px;
                             background: white;
@@ -206,6 +210,18 @@ export component AppWindow inherits MaterialWindow {
                             Text { x: 16px; width: parent.width - 32px; height: parent.height; text: "QR no disponible"; color: #4a4a4a; horizontal-alignment: center; vertical-alignment: center; visible: !root.qr-ready; }
                         }
                         Hint { text: root.pairing-note; }
+                        if root.direct : VerticalLayout {
+                            spacing: 8px;
+                            TextButton { text: "Buscar celular"; enabled: !root.busy; clicked => { root.search-p2p(); } }
+                            DropDownMenu {
+                                label: "Dispositivo Wi-Fi Direct";
+                                items: root.p2p-peers;
+                                current-index: root.p2p-peer-index;
+                                enabled: !root.busy && root.p2p-peers.length > 0;
+                                selected(index) => { root.p2p-peer-index = index; }
+                            }
+                            TextButton { text: "Conectar P2P"; enabled: !root.busy && root.p2p-peers.length > 0; clicked => { root.connect-p2p(); } }
+                        }
                         HorizontalLayout {
                             TextButton { text: "Actualizar QR"; enabled: !root.busy; clicked => { root.refresh-pairing(); } }
                             TextButton { text: "Copiar"; enabled: root.qr-ready; clicked => { clipboard.select-all(); clipboard.copy(); root.copy-link(); } }

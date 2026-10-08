@@ -11,14 +11,11 @@ import android.widget.Switch;
 import android.content.pm.PackageManager;
 import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
-import android.net.wifi.p2p.WifiP2pConfig;
-import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Bundle;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.net.wifi.WpsInfo;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -43,7 +40,6 @@ public class MainActivity extends Activity {
     private static final int REQUEST_QR_SCAN = 103;
     private String pairing;
     private String p2pToken;
-    private String p2pPeer;
     private String p2pStatus = "";
     private String pendingAction;
     private AppStyle style;
@@ -54,7 +50,6 @@ public class MainActivity extends Activity {
     private Spinner bufferSpinner;
     private SeekBar volumeBar;
     private volatile ServerSocket p2pServer;
-    private final Handler p2pHandler = new Handler(Looper.getMainLooper());
     private int p2pGeneration;
     private final Handler audioHandler = new Handler(Looper.getMainLooper());
     private boolean audioRequested;
@@ -65,10 +60,10 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         pairing = getPreferences(MODE_PRIVATE).getString("pairing", "");
         p2pToken = getPreferences(MODE_PRIVATE).getString("p2pToken", "");
-        p2pPeer = getPreferences(MODE_PRIVATE).getString("p2pPeer", "");
         if (!p2pToken.isEmpty()) pairing = "";
 
         buildInterface();
+        if (!p2pToken.isEmpty()) startP2p();
     }
 
     private void buildInterface() {
@@ -276,7 +271,7 @@ public class MainActivity extends Activity {
     private void begin(String action) {
         if (pairing.isEmpty()) {
             Toast.makeText(this, p2pToken.isEmpty() ? "Primero escanea el QR del PC" :
-                    "Espera el enlace Wi-Fi Direct; el PC se conecta automáticamente", Toast.LENGTH_LONG).show();
+                    "Busca y conecta este celular desde el PC", Toast.LENGTH_LONG).show();
             return;
         }
         pendingAction = action;
@@ -349,20 +344,21 @@ public class MainActivity extends Activity {
                 && uri.getPathSegments().size() == 1) {
             audioRequested = false;
             p2pToken = uri.getLastPathSegment();
-            p2pPeer = uri.getQueryParameter("peer");
-            if (p2pPeer == null) p2pPeer = "";
             p2pStatus = "";
             pairing = "";
             getPreferences(MODE_PRIVATE).edit().putString("p2pToken", p2pToken)
-                    .putString("p2pPeer", p2pPeer).remove("pairing").apply();
+                    .remove("p2pPeer").remove("pairing").apply();
             updateStatus();
             startP2p();
         } else if (("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
                 && uri.getHost() != null && uri.getPathSegments().size() == 1) {
             audioRequested = false;
+            ++p2pGeneration;
+            ServerSocket server = p2pServer;
+            p2pServer = null;
+            if (server != null) try { server.close(); } catch (IOException ignored) {}
             pairing = uri.buildUpon().clearQuery().build().toString();
             p2pToken = "";
-            p2pPeer = "";
             getPreferences(MODE_PRIVATE).edit().putString("pairing", pairing)
                     .remove("p2pToken").remove("p2pPeer").apply();
             updateStatus();
@@ -399,6 +395,14 @@ public class MainActivity extends Activity {
         super.onPause();
     }
 
+    @Override protected void onDestroy() {
+        ++p2pGeneration;
+        ServerSocket server = p2pServer;
+        p2pServer = null;
+        if (server != null) try { server.close(); } catch (IOException ignored) {}
+        super.onDestroy();
+    }
+
     private void startP2p() {
         String permission = Build.VERSION.SDK_INT >= 33 ? Manifest.permission.NEARBY_WIFI_DEVICES :
                 Manifest.permission.ACCESS_FINE_LOCATION;
@@ -406,12 +410,9 @@ public class MainActivity extends Activity {
             requestPermissions(new String[]{permission}, REQUEST_P2P);
             return;
         }
-        p2pHandler.removeCallbacksAndMessages(null);
+        pairing = "";
+        updateStatus();
         int generation = ++p2pGeneration;
-        if (!p2pPeer.matches("(?i)[0-9a-f]{2}(:[0-9a-f]{2}){5}")) {
-            setP2pStatus("Escanea el QR actualizado de ReExAudio en el PC.");
-            return;
-        }
         if (!startPairingServer()) return;
         try {
             WifiP2pManager manager = getSystemService(WifiP2pManager.class);
@@ -424,15 +425,18 @@ public class MainActivity extends Activity {
                 setP2pStatus("No se pudo iniciar Wi‑Fi Direct. Usa Red local en el PC.");
                 return;
             }
-            setP2pStatus("Buscando el PC por Wi‑Fi Direct…");
+            setP2pStatus("Preparando Wi‑Fi Direct para que se conecte el PC…");
             manager.requestGroupInfo(channel, group -> {
                 if (generation != p2pGeneration) return;
                 if (group == null) {
-                    discoverPc(manager, channel, generation);
+                    createP2pGroup(manager, channel, generation);
                 } else {
                     manager.removeGroup(channel, new WifiP2pManager.ActionListener() {
-                        public void onSuccess() { discoverPc(manager, channel, generation); }
-                        public void onFailure(int reason) { discoverPc(manager, channel, generation); }
+                        public void onSuccess() { createP2pGroup(manager, channel, generation); }
+                        public void onFailure(int reason) {
+                            if (generation == p2pGeneration)
+                                setP2pStatus("No se pudo reiniciar Wi‑Fi Direct (" + reason + "). Reintenta.");
+                        }
                     });
                 }
             });
@@ -447,7 +451,6 @@ public class MainActivity extends Activity {
             ServerSocket previous = p2pServer;
             if (previous != null) previous.close();
             ServerSocket server = new ServerSocket(53318);
-            server.setSoTimeout(300000);
             p2pServer = server;
             String token = p2pToken;
             new Thread(() -> {
@@ -462,7 +465,6 @@ public class MainActivity extends Activity {
                             client.getOutputStream().write("OK\n".getBytes());
                             pairing = "http://" + pcAddress + ":53317/" + token;
                             runOnUiThread(this::updateStatus);
-                            break;
                         }
                     }
                 } catch (Exception error) {
@@ -480,63 +482,18 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void discoverPc(WifiP2pManager manager, WifiP2pManager.Channel channel,
-                            int generation) {
+    private void createP2pGroup(WifiP2pManager manager, WifiP2pManager.Channel channel,
+                                int generation) {
         if (generation != p2pGeneration) return;
-        manager.discoverPeers(channel, new WifiP2pManager.ActionListener() {
-            public void onSuccess() { pollPcPeer(manager, channel, generation, 0); }
+        manager.createGroup(channel, new WifiP2pManager.ActionListener() {
+            public void onSuccess() {
+                if (generation == p2pGeneration)
+                    setP2pStatus("Wi‑Fi Direct listo. Pulsa Buscar celular en el PC y conéctalo.");
+            }
             public void onFailure(int reason) {
-                if (generation != p2pGeneration) return;
-                setP2pStatus("No se pudo buscar el PC por Wi‑Fi Direct (" + reason + "). " +
-                        "Activa Wi‑Fi y Ubicación en el celular.");
-            }
-        });
-    }
-
-    private void pollPcPeer(WifiP2pManager manager, WifiP2pManager.Channel channel,
-                            int generation, int attempt) {
-        if (generation != p2pGeneration || !pairing.isEmpty()) return;
-        if (attempt >= 25) {
-            setP2pStatus("No encontré el PC. Abre ReExAudio en el PC y reintenta aquí.");
-            return;
-        }
-        manager.requestPeers(channel, peers -> {
-            if (generation != p2pGeneration || !pairing.isEmpty()) return;
-            for (WifiP2pDevice device : peers.getDeviceList()) {
-                if (p2pPeer.equalsIgnoreCase(device.deviceAddress)) {
-                    WifiP2pConfig config = new WifiP2pConfig();
-                    config.deviceAddress = device.deviceAddress;
-                    config.wps.setup = WpsInfo.PBC;
-                    config.groupOwnerIntent = 15;
-                    setP2pStatus("Conectando por Wi‑Fi Direct con el PC…");
-                    manager.connect(channel, config, new WifiP2pManager.ActionListener() {
-                        public void onSuccess() { pollP2pGroup(manager, channel, generation, 0); }
-                        public void onFailure(int reason) {
-                            if (generation != p2pGeneration) return;
-                            setP2pStatus("Falló la conexión Wi‑Fi Direct (" + reason + "). " +
-                                    "Pulsa «Reintentar conexión P2P».");
-                        }
-                    });
-                    return;
-                }
-            }
-            p2pHandler.postDelayed(() -> pollPcPeer(manager, channel, generation, attempt + 1), 2000);
-        });
-    }
-
-    private void pollP2pGroup(WifiP2pManager manager, WifiP2pManager.Channel channel,
-                              int generation, int attempt) {
-        if (generation != p2pGeneration || !pairing.isEmpty()) return;
-        if (attempt >= 30) {
-            setP2pStatus("La conexión Wi‑Fi Direct no terminó. Reintenta en ambos equipos.");
-            return;
-        }
-        manager.requestConnectionInfo(channel, info -> {
-            if (generation != p2pGeneration || !pairing.isEmpty()) return;
-            if (info.groupFormed) {
-                setP2pStatus("Enlace Wi‑Fi Direct listo. Esperando al PC…");
-            } else {
-                p2pHandler.postDelayed(() -> pollP2pGroup(manager, channel, generation, attempt + 1), 2000);
+                if (generation == p2pGeneration)
+                    setP2pStatus("No se pudo crear el grupo Wi‑Fi Direct (" + reason + "). " +
+                            "Activa Wi‑Fi y reintenta.");
             }
         });
     }

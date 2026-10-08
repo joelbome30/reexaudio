@@ -16,7 +16,8 @@ enum Action {
     Devices,
     Pairing,
     Save(Config),
-    AutoConnect,
+    SearchP2p,
+    ConnectP2p(usize),
     Toggle,
 }
 fn items(values: Vec<String>) -> ModelRc<MenuItem> {
@@ -160,6 +161,20 @@ pub fn run() -> Result<()> {
         });
     }
     action!(on_refresh_pairing, Action::Pairing);
+    action!(on_search_p2p, Action::SearchP2p);
+    {
+        let weak = ui.as_weak();
+        let tx = sender.clone();
+        ui.on_connect_p2p(move || {
+            if let Some(ui) = weak.upgrade() {
+                send(
+                    &ui,
+                    &tx,
+                    Action::ConnectP2p(ui.get_p2p_peer_index() as usize),
+                );
+            }
+        });
+    }
     action!(on_refresh_devices, Action::Devices);
     action!(on_toggle, Action::Toggle);
     {
@@ -192,7 +207,6 @@ pub fn run() -> Result<()> {
         });
     }
     let timer = slint::Timer::default();
-    let p2p_timer = slint::Timer::default();
     {
         let weak = ui.as_weak();
         let tx = sender.clone();
@@ -206,31 +220,10 @@ pub fn run() -> Result<()> {
             },
         );
     }
-    {
-        let weak = ui.as_weak();
-        let tx = sender.clone();
-        p2p_timer.start(
-            slint::TimerMode::Repeated,
-            Duration::from_secs(12),
-            move || {
-                if weak
-                    .upgrade()
-                    .is_some_and(|ui| ui.get_direct() && !ui.get_busy())
-                {
-                    if tx.try_send(Action::AutoConnect).is_ok() {
-                        if let Some(ui) = weak.upgrade() {
-                            ui.set_busy(true);
-                        }
-                    }
-                }
-            },
-        );
-    }
     sender.try_send(Action::Devices)?;
     sender.try_send(Action::Pairing)?;
     let result = ui.run();
     drop(timer);
-    drop(p2p_timer);
     drop(volume_timer);
     // Finish an in-flight operation before dropping its runtime/process handles.
     // The window is already closed; the independent audio service keeps running.
@@ -244,12 +237,12 @@ pub fn run() -> Result<()> {
 async fn worker(state: State, mut receiver: mpsc::Receiver<Action>, ui: slint::Weak<AppWindow>) {
     // A package manager may have installed the user unit during this login session.
     let _ = system::command("systemctl", &["--user", "daemon-reload"]).await;
+    let mut p2p_peers: Vec<(String, String)> = Vec::new();
     while let Some(action) = receiver.recv().await {
         if matches!(action, Action::Quit) {
             break;
         }
-        let polling = matches!(action, Action::Refresh | Action::AutoConnect);
-        let clears_busy = matches!(&action, Action::AutoConnect);
+        let polling = matches!(action, Action::Refresh);
         if !polling {
             let _ = ui.upgrade_in_event_loop(|ui| ui.set_busy(true));
         }
@@ -293,31 +286,41 @@ async fn worker(state: State, mut receiver: mpsc::Receiver<Action>, ui: slint::W
                         pairing(&state, &ui).await?;
                     }
                 }
-                Action::AutoConnect => {
-                    let connected = serde_json::from_str::<bool>(&helper(&["connected"]).await?)
-                        .unwrap_or(false);
-                    let paired = if connected {
-                        true
-                    } else {
-                        ui.upgrade_in_event_loop(|ui| {
-                            ui.set_pairing_note(
-                                "Esperando la conexión del celular que escaneó el QR…".into(),
-                            )
-                        })?;
-                        serde_json::from_str::<bool>(&helper(&["listen"]).await?).unwrap_or(false)
-                    };
-                    if paired {
-                        return_auto_status(&ui, "Celular conectado · Escanea el QR desde Android")
-                            .await?;
-                        system::command("systemctl", &["--user", "start", SERVICE]).await?;
-                        refresh(&ui).await?;
-                        ui.upgrade_in_event_loop(|ui| {
-                            ui.set_pairing_note(
-                                "Celular conectado. Ya puedes iniciar el audio desde Android."
-                                    .into(),
-                            )
-                        })?;
-                    }
+                Action::SearchP2p => {
+                    p2p_peers = serde_json::from_str(&helper(&["discover"]).await?)?;
+                    let labels = p2p_peers
+                        .iter()
+                        .map(|(name, address)| format!("{name} · {address}"))
+                        .collect();
+                    let count = p2p_peers.len();
+                    ui.upgrade_in_event_loop(move |ui| {
+                        ui.set_p2p_peers(items(labels));
+                        ui.set_p2p_peer_index(0);
+                        ui.set_pairing_note(
+                            if count == 0 {
+                                "No se encontró el celular. Reintenta P2P en Android y busca de nuevo."
+                            } else {
+                                "Elige tu celular en la lista y pulsa Conectar P2P."
+                            }
+                            .into(),
+                        );
+                    })?;
+                }
+                Action::ConnectP2p(index) => {
+                    let (name, address) = p2p_peers
+                        .get(index)
+                        .context("Busca el celular de nuevo antes de conectar")?;
+                    let name = name.clone();
+                    let address = address.clone();
+                    return_auto_status(&ui, &format!("Conectando con {name}…")).await?;
+                    helper(&["connect", &address]).await?;
+                    system::command("systemctl", &["--user", "start", SERVICE]).await?;
+                    refresh(&ui).await?;
+                    return_auto_status(
+                        &ui,
+                        "Celular conectado. Ya puedes iniciar el audio desde Android.",
+                    )
+                    .await?;
                 }
                 Action::Toggle => {
                     let active = system::service_state().await?;
@@ -336,7 +339,7 @@ async fn worker(state: State, mut receiver: mpsc::Receiver<Action>, ui: slint::W
             Ok::<_, anyhow::Error>(())
         }
         .await;
-        if !polling || clears_busy || result.is_err() {
+        if !polling || result.is_err() {
             let error = result.err().map(|e| format!("{e:#}"));
             let _ = ui.upgrade_in_event_loop(move |ui| {
                 ui.set_busy(false);
@@ -386,15 +389,14 @@ async fn pairing(state: &State, ui: &slint::Weak<AppWindow>) -> Result<()> {
     let result = async {
         let cfg = state.config()?;
         let (base, note) = if cfg.connection == "direct" {
-            let peer: String = serde_json::from_str(&helper(&["address"]).await?)?;
+            helper(&["device"]).await?;
             (
                 format!(
-                    "redmiaudio://p2p/{}?profile={}&peer={peer}",
+                    "redmiaudio://p2p/{}?profile={}",
                     state.token,
                     cfg.profile.name()
                 ),
-                "Abre ReExAudio en Android y escanea este QR. El PC se conectará automáticamente."
-                    .to_string(),
+                "Escanea este QR en Android, pulsa Buscar celular y elige tu teléfono.".to_string(),
             )
         } else {
             let sock = UdpSocket::bind("0.0.0.0:0")?;
